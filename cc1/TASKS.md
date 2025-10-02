@@ -14,6 +14,9 @@ _Tasks currently being worked on_
 ## Completed
 _Finished tasks (move here when done)_
 
+- [x] Extend CSV upload file size limit from 10MB to 30MB (updated frontend validation) #claude-session:2025-10-02
+- [x] Refactor legacy thema_ads script for security (removed hardcoded secrets, environment variables, .env setup) #claude-session:2025-10-02
+- [x] Set up Git repository and GitHub integration (Git init, SSH authentication, GitHub push, secret protection) #claude-session:2025-10-02
 - [x] Add delete job functionality to Thema Ads (UI button, backend endpoint, cascade deletion) #claude-session:2025-10-02
 - [x] Fix CSV upload and validation issues (empty row handling, customer_id formatting, optional campaign columns) #claude-session:2025-10-02
 - [x] Add comprehensive error handling to Thema Ads frontend (CSV validation, timeouts, retries, network errors) #claude-session:2025-10-02

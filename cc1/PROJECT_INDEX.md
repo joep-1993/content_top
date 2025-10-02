@@ -13,7 +13,10 @@ test2/
 │   ├── BACKLOG.md        # Future planning
 │   └── PROJECT_INDEX.md  # This file
 ├── thema_ads_project/     # Google Ads automation project
-│   ├── thema_ads          # Original script (legacy)
+│   ├── thema_ads          # Legacy script (refactored to use .env)
+│   ├── .env               # Credentials for legacy script (git ignored)
+│   ├── .env.example       # Template for legacy script environment
+│   ├── README.md          # Legacy script setup instructions
 │   └── thema_ads_optimized/  # High-performance optimized version
 │       ├── config.py       # Environment-based configuration
 │       ├── models.py       # Data structures
@@ -63,6 +66,7 @@ test2/
 ├── .env.example        # Environment template
 ├── .env                # Local environment (git ignored)
 ├── .gitignore          # Version control excludes
+│                       # Ignores: .env files, thema_ads legacy script, Excel files (*.xlsx, *.xls)
 ├── README.md           # Quick start guide
 ├── CLAUDE.md           # Claude Code instructions
 ├── THEMA_ADS_GUIDE.md  # Complete Thema Ads documentation
@@ -100,6 +104,26 @@ ENABLE_CACHING=true                  # Cache label/campaign lookups
 INPUT_FILE=input_data.xlsx           # Excel/CSV file to process
 LOG_LEVEL=INFO                       # DEBUG | INFO | WARNING | ERROR
 DRY_RUN=false                        # Set to true for testing
+```
+
+### Required (Legacy Script - thema_ads)
+```bash
+# Google Ads OAuth Credentials (REQUIRED)
+GOOGLE_CLIENT_ID=...apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-...
+GOOGLE_REFRESH_TOKEN=1//09...
+GOOGLE_DEVELOPER_TOKEN=...
+GOOGLE_LOGIN_CUSTOMER_ID=...
+
+# Azure Mail Credentials (OPTIONAL - for email features)
+MAIL_TENANT_ID=...
+MAIL_CLIENT_ID=...
+MAIL_CLIENT_SECRET=...
+MAIL_CLIENT_SECRET_ID=...
+
+# File Paths (OPTIONAL - defaults provided)
+EXCEL_PATH=C:\Users\YourName\Downloads\Python\your_file.xlsx
+SERVICE_ACCOUNT_FILE=C:\Users\YourName\Downloads\Python\service-account.json
 ```
 
 ### Important Notes
@@ -187,6 +211,13 @@ openpyxl==3.1.2           # Excel file reading
 python-dotenv==1.0.0      # Environment variable management
 ```
 
+## Git Repository
+
+- **URL**: https://github.com/joep-1993/theme_ads
+- **User**: joep-1993 <joepvanschagen34@gmail.com>
+- **Authentication**: SSH (ed25519 key)
+- **Protected Files**: thema_ads_project/thema_ads, *.xlsx, *.xls (in .gitignore)
+
 ## API Endpoints
 
 ### Core
@@ -224,6 +255,7 @@ python-dotenv==1.0.0      # Environment variable management
 - Extra columns are ignored (e.g., status, budget, ad group name)
 - Empty rows are automatically skipped
 - Delimiter auto-detected (comma or semicolon)
+- Maximum file size: 30MB
 
 ---
 _Last updated: 2025-10-02_

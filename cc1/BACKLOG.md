@@ -46,6 +46,7 @@ _What are we building and why?_
 _Capture ideas for future consideration_
 
 - **Bulk CSV validation endpoint**: Pre-validate large CSVs before job creation (check customer IDs exist, ad groups are valid) - could save time by catching errors before job execution
+- **Automated secret scanning in pre-commit hooks**: Prevent accidental commits of secrets with local validation before push (e.g., detect-secrets, git-secrets, or custom regex patterns)
 
 ---
 _Last updated: 2025-10-02_

@@ -24,10 +24,10 @@ function validateCSVFile(file) {
         errors.push('Invalid file type. Please upload a CSV file (.csv)');
     }
 
-    // Check file size (max 10MB)
-    const maxSize = 10 * 1024 * 1024; // 10MB
+    // Check file size (max 30MB)
+    const maxSize = 30 * 1024 * 1024; // 30MB
     if (file.size > maxSize) {
-        errors.push('File too large. Maximum size is 10MB');
+        errors.push('File too large. Maximum size is 30MB');
     }
 
     if (file.size === 0) {
@@ -121,10 +121,10 @@ async function uploadCSV() {
         return;
     }
 
-    // Check file size (max 10MB)
-    const maxSize = 10 * 1024 * 1024;
+    // Check file size (max 30MB)
+    const maxSize = 30 * 1024 * 1024;
     if (file.size > maxSize) {
-        showAlert('uploadResult', 'File too large. Maximum size is 10MB', 'danger');
+        showAlert('uploadResult', 'File too large. Maximum size is 30MB', 'danger');
         return;
     }
 

@@ -89,6 +89,44 @@ if not customer_id or not ad_group_id:
 customer_id = row['customer_id'].strip().replace('-', '')
 ```
 
+### GitHub Push Protection Blocking Secrets
+- **Error**: `Push cannot contain secrets` - Google OAuth tokens, Azure secrets detected
+- **Cause**: Hardcoded credentials in thema_ads script were committed to git history
+- **Solution**:
+  1. Remove files with secrets: `git rm --cached thema_ads_project/thema_ads`
+  2. Add to .gitignore: `thema_ads_project/thema_ads` and `*.xlsx`
+  3. Refactor script to use environment variables from .env file
+  4. Amend commit to exclude sensitive files
+```bash
+# Remove from git tracking
+git rm --cached path/to/secret-file
+
+# Add to .gitignore
+echo "path/to/secret-file" >> .gitignore
+
+# Amend commit
+git add .gitignore
+git commit --amend --no-edit
+```
+
+## Git Commands
+```bash
+# SSH Setup
+ssh-keygen -t ed25519 -C "your@email.com"  # Generate SSH key
+cat ~/.ssh/id_ed25519.pub                   # Display public key (add to GitHub)
+ssh -T git@github.com                       # Test GitHub connection
+
+# Repository Setup
+git init                                    # Initialize repository
+git remote add origin git@github.com:user/repo.git
+git branch -M main                          # Rename branch to main
+git push -u origin main                     # Push to GitHub
+
+# Configuration
+git config user.name "username"
+git config user.email "email@example.com"
+```
+
 ## Project Patterns
 
 ### No Build Tools Benefits
@@ -185,6 +223,31 @@ item = {
 # During job execution: fetch missing data if needed
 if not item['campaign_id']:
     campaign_info = fetch_from_google_ads_api(customer_id, ad_group_id)
+```
+
+### Environment Variable Management for Legacy Scripts
+- **Pattern**: Refactor hardcoded credentials to use python-dotenv
+- **Benefit**: Secure secrets, reusable configuration, safe for version control, prevents accidental exposure
+- **Example**: Load from .env file at script startup
+```python
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+env_path = Path(__file__).parent / ".env"
+if env_path.exists():
+    load_dotenv(env_path)
+
+# Use environment variables instead of hardcoded values
+refresh_token = os.getenv("GOOGLE_REFRESH_TOKEN")
+developer_token = os.getenv("GOOGLE_DEVELOPER_TOKEN")
+client_id = os.getenv("GOOGLE_CLIENT_ID")
+
+# Validate required variables
+required = ["GOOGLE_REFRESH_TOKEN", "GOOGLE_DEVELOPER_TOKEN", "GOOGLE_CLIENT_ID"]
+missing = [k for k in required if not os.getenv(k)]
+if missing:
+    raise RuntimeError(f"Missing required environment variables: {', '.join(missing)}")
 ```
 
 ---
