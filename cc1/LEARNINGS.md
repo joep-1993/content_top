@@ -90,16 +90,18 @@ customer_id = row['customer_id'].strip().replace('-', '')
 ```
 
 ### Excel Scientific Notation in CSV
-- **Error**: `BAD_RESOURCE_ID` - "Requested entity was not found" when ad_group_id = "1,76256E+11"
+- **Error**: `BAD_RESOURCE_ID` - "Requested entity was not found" when ad_group_id = "1,76256E+11" or "1.76256E+11"
 - **Cause**: Excel automatically converts large numbers to scientific notation when opening/saving CSV files
-- **Example**: `176256000000000` becomes `1.76256E+11`
+- **Example**: `176256000000000` becomes `1.76256E+11` (English locale) or `1,76256E+11` (European locale)
 - **Impact**: All items fail with invalid resource IDs
-- **Solution**: Convert scientific notation back to full numbers during CSV parsing
+- **Solution**: Convert scientific notation back to full numbers during CSV parsing, handling both period and comma decimal separators
 ```python
 def convert_scientific_notation(value: str) -> str:
     if 'E' in value.upper():
         try:
-            return str(int(float(value)))  # 1.76256E+11 → 176256000000000
+            # Handle both comma and period decimal separators
+            value_normalized = value.replace(',', '.')
+            return str(int(float(value_normalized)))  # 1,76256E+11 → 176256000000000
         except (ValueError, OverflowError):
             return value
     return value

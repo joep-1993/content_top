@@ -224,17 +224,21 @@ async def get_status():
 # ==================== Thema Ads Endpoints ====================
 
 def convert_scientific_notation(value: str) -> str:
-    """Convert scientific notation to regular number string."""
+    """Convert scientific notation to regular number string.
+    Handles both period and comma decimal separators (e.g., 1.76256E+11 or 1,76256E+11).
+    """
     if not value:
         return value
 
     value = value.strip()
 
-    # Check if it's in scientific notation (e.g., 1.76256E+11 or 1.76256e+11)
+    # Check if it's in scientific notation (e.g., 1.76256E+11 or 1,76256E+11)
     if 'E' in value.upper():
         try:
+            # Replace comma with period for locales that use comma as decimal separator
+            value_normalized = value.replace(',', '.')
             # Convert to float, then to int, then to string (removes scientific notation)
-            return str(int(float(value)))
+            return str(int(float(value_normalized)))
         except (ValueError, OverflowError):
             # If conversion fails, return original value
             return value

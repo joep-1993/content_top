@@ -14,6 +14,7 @@ _Tasks currently being worked on_
 ## Completed
 _Finished tasks (move here when done)_
 
+- [x] Fix comma decimal separator in scientific notation (handle 1,76256E+11 from European Excel locales) #claude-session:2025-10-02
 - [x] Add automatic job start after CSV upload (removed manual start button requirement) #claude-session:2025-10-02
 - [x] Fix scientific notation in CSV uploads (Excel converts large IDs to 1.76256E+11 format) #claude-session:2025-10-02
 - [x] Add CSV download for failed items (export customer_id, ad_group_id, error_message) #claude-session:2025-10-02
