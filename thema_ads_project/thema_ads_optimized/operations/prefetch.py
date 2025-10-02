@@ -42,7 +42,6 @@ async def prefetch_existing_ads_bulk(
     client: GoogleAdsClient,
     customer_id: str,
     ad_group_resources: List[str],
-    exclude_label_name: str = "BF_2025",
     batch_size: int = 7500
 ) -> Dict[str, ExistingAd]:
     """Fetch all existing RSAs for multiple ad groups in batched queries."""
@@ -53,21 +52,6 @@ async def prefetch_existing_ads_bulk(
         # Build resource list for query
         if not ad_group_resources:
             return {}
-
-        # First, get the label resource name to exclude
-        label_resources = []
-        label_query = f"""
-            SELECT label.resource_name
-            FROM label
-            WHERE label.name = '{exclude_label_name}'
-            LIMIT 50
-        """
-        try:
-            label_search = ga_service.search(customer_id=customer_id, query=label_query)
-            for row in label_search:
-                label_resources.append(row.label.resource_name)
-        except Exception as e:
-            logger.warning(f"Could not fetch exclude label: {e}")
 
         # Use dynamic batch size
         ads_map = {}
@@ -92,14 +76,8 @@ async def prefetch_existing_ads_bulk(
                     WHERE ad_group_ad.ad_group IN ({resources_str})
                         AND ad_group_ad.ad.type = RESPONSIVE_SEARCH_AD
                         AND ad_group_ad.status != REMOVED
+                    ORDER BY ad_group_ad.status ASC
                 """
-
-                # Add label exclusion if label exists
-                if label_resources:
-                    labels_str = ", ".join(f"'{lr}'" for lr in label_resources)
-                    query += f" AND ad_group_ad.labels CONTAINS NONE ({labels_str})"
-
-                query += " ORDER BY ad_group_ad.status ASC"
 
                 response = ga_service.search(customer_id=customer_id, query=query)
 
@@ -125,7 +103,7 @@ async def prefetch_existing_ads_bulk(
                         path2=getattr(rsa, "path2", "") or ""
                     )
 
-            logger.info(f"Prefetched {len(ads_map)} existing ads for {len(ad_group_resources)} ad groups (in {len(ad_group_resources)//BATCH_SIZE + 1} batches)")
+            logger.info(f"Prefetched {len(ads_map)} existing ads for {len(ad_group_resources)} ad groups (in {len(ad_group_resources)//batch_size + 1} batches)")
         except Exception as e:
             logger.error(f"Failed to prefetch ads for customer {customer_id}: {e}")
 

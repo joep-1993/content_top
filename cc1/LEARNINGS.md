@@ -526,5 +526,39 @@ async def prefetch_data(client, resources, batch_size=7500):
 - **Implementation**: Database column stores preference, used throughout processing lifecycle
 - **Persistence**: Batch size saved per-job ensures consistency across pauses/resumes
 
+### Theme Label Filtering Issue - False Negatives
+- **Problem**: Ad groups with RSAs incorrectly marked as "skipped - no ads" even when ads exist
+- **Root Cause**: Prefetch query filtered out ads that already had theme labels (BF_2025, SINGLES_DAY)
+- **Impact**: If ALL RSAs in an ad group had theme labels from previous runs, query returns 0 results
+- **Example**:
+  - Ad group 'Bouwstenen/products/.../merk~4238090_EXACT_PHRASE' has 3 RSAs
+  - All 3 RSAs have BF_2025 label from previous run
+  - Query: `WHERE ad_group = 'X' AND labels CONTAINS NONE ('BF_2025')` → 0 results
+  - Script thinks: "No ads found" → marks as skipped
+- **Why It Existed**: Original logic tried to avoid duplicating themed ads by excluding already-labeled ones
+- **Why It's Wrong**: SD_DONE label on ad group already prevents reprocessing; filtering individual ads causes false negatives
+- **Solution**: Remove label filtering from ad prefetch, rely solely on SD_DONE ad group label
+```python
+# ❌ BAD: Filters out ads with theme labels (causes false negatives)
+query = f"""
+    SELECT ad_group_ad.* FROM ad_group_ad
+    WHERE ad_group IN ({resources})
+    AND ad.type = RESPONSIVE_SEARCH_AD
+    AND status != REMOVED
+    AND labels CONTAINS NONE ('{theme_label}')  # ← Causes problem
+"""
+
+# ✅ GOOD: No label filtering on ads (SD_DONE on ad group prevents reprocessing)
+query = f"""
+    SELECT ad_group_ad.* FROM ad_group_ad
+    WHERE ad_group IN ({resources})
+    AND ad.type = RESPONSIVE_SEARCH_AD
+    AND status != REMOVED
+"""
+# Ad group-level SD_DONE label check prevents duplicate processing
+```
+- **Impact**: Paused ad groups with existing RSAs now correctly processed
+- **Safety**: SD_DONE label on ad groups already ensures idempotency
+
 ---
-_Last updated: 2025-10-02_
+_Last updated: 2025-10-03_

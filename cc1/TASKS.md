@@ -14,6 +14,8 @@ _Tasks currently being worked on_
 ## Completed
 _Finished tasks (move here when done)_
 
+- [x] Remove theme label filtering from ad prefetch logic (find existing ads even if they already have BF_2025 label) #claude-session:2025-10-03
+- [x] Add ad_group_name column to CSV export of failed/skipped items for better debugging #claude-session:2025-10-03
 - [x] Add configurable batch_size input field to frontend (CSV and Auto-Discover tabs, default 7500, range 1000-10000) #claude-session:2025-10-02
 - [x] Increase BATCH_SIZE from 5,000 to 7,500 for additional 33% performance improvement (fewer API calls for large customers) #claude-session:2025-10-02
 - [x] Fix Excel precision loss by using ad_group_name lookups (added ad_group_name column, resolve correct IDs from Google Ads API) #claude-session:2025-10-02

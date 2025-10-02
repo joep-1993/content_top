@@ -706,7 +706,7 @@ async def download_failed_items(job_id: int):
 
         # Get failed and skipped items
         cur.execute("""
-            SELECT customer_id, campaign_id, campaign_name, ad_group_id, status, error_message
+            SELECT customer_id, campaign_id, campaign_name, ad_group_id, ad_group_name, status, error_message
             FROM thema_ads_job_items
             WHERE job_id = %s AND status IN ('failed', 'skipped')
             ORDER BY status, customer_id, ad_group_id
@@ -724,7 +724,7 @@ async def download_failed_items(job_id: int):
         writer = csv.writer(output)
 
         # Write header
-        writer.writerow(['customer_id', 'campaign_id', 'campaign_name', 'ad_group_id', 'status', 'reason'])
+        writer.writerow(['customer_id', 'campaign_id', 'campaign_name', 'ad_group_id', 'ad_group_name', 'status', 'reason'])
 
         # Write data
         for item in items:
@@ -744,6 +744,7 @@ async def download_failed_items(job_id: int):
                 item['campaign_id'] or '',
                 item['campaign_name'] or '',
                 item['ad_group_id'],
+                item['ad_group_name'] or '',
                 item['status'],
                 reason
             ])
