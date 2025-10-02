@@ -246,6 +246,167 @@ def convert_scientific_notation(value: str) -> str:
     return value
 
 
+@app.post("/api/thema-ads/discover")
+async def discover_ad_groups(background_tasks: BackgroundTasks = None):
+    """
+    Auto-discover ad groups from Google Ads MCC account.
+    Finds all 'Beslist.nl -' accounts, campaigns starting with 'HS/',
+    and ad groups without SD_DONE label.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    try:
+        from pathlib import Path
+        from dotenv import load_dotenv
+
+        # Load environment variables
+        env_path = Path(__file__).parent.parent / "thema_ads_project" / "thema_ads_optimized" / ".env"
+        if env_path.exists():
+            load_dotenv(env_path)
+        else:
+            raise HTTPException(status_code=500, detail="Google Ads credentials not configured")
+
+        from config import load_config_from_env
+        from google_ads_client import initialize_client
+
+        config = load_config_from_env()
+        client = initialize_client(config.google_ads)
+
+        mcc_customer_id = "3011145605"
+        logger.info(f"Discovering ad groups from MCC {mcc_customer_id}")
+
+        # Get all customer accounts
+        ga_service = client.get_service("GoogleAdsService")
+        customer_service = client.get_service("CustomerService")
+
+        # Query accessible customers
+        customer_query = """
+            SELECT
+                customer_client.descriptive_name,
+                customer_client.id,
+                customer_client.resource_name
+            FROM customer_client
+            WHERE customer_client.manager = FALSE
+        """
+
+        response = ga_service.search(customer_id=mcc_customer_id, query=customer_query)
+
+        beslist_customers = []
+        for row in response:
+            name = row.customer_client.descriptive_name
+            if name and name.startswith("Beslist.nl -"):
+                beslist_customers.append({
+                    'name': name,
+                    'id': str(row.customer_client.id),
+                    'resource_name': row.customer_client.resource_name
+                })
+
+        logger.info(f"Found {len(beslist_customers)} Beslist.nl accounts")
+
+        # For each customer, find campaigns starting with HS/ and their ad groups
+        input_data = []
+
+        for customer in beslist_customers:
+            customer_id = customer['id']
+            logger.info(f"Processing customer {customer_id}: {customer['name']}")
+
+            # Find campaigns starting with HS/
+            campaign_query = """
+                SELECT
+                    campaign.id,
+                    campaign.name,
+                    campaign.resource_name
+                FROM campaign
+                WHERE campaign.name LIKE 'HS/%'
+                AND campaign.status = 'ENABLED'
+            """
+
+            try:
+                campaign_response = ga_service.search(customer_id=customer_id, query=campaign_query)
+
+                for camp_row in campaign_response:
+                    campaign_id = str(camp_row.campaign.id)
+                    campaign_name = camp_row.campaign.name
+                    campaign_resource = camp_row.campaign.resource_name
+
+                    logger.info(f"  Found campaign: {campaign_name}")
+
+                    # Find ad groups in this campaign without SD_DONE label
+                    ag_query = f"""
+                        SELECT
+                            ad_group.id,
+                            ad_group.name,
+                            ad_group.resource_name
+                        FROM ad_group
+                        WHERE ad_group.campaign = '{campaign_resource}'
+                        AND ad_group.status = 'ENABLED'
+                    """
+
+                    ag_response = ga_service.search(customer_id=customer_id, query=ag_query)
+
+                    for ag_row in ag_response:
+                        ad_group_id = str(ag_row.ad_group.id)
+
+                        # Check if ad group has SD_DONE label
+                        label_query = f"""
+                            SELECT ad_group_label.ad_group
+                            FROM ad_group_label
+                            WHERE ad_group_label.ad_group = '{ag_row.ad_group.resource_name}'
+                            AND ad_group_label.label IN (
+                                SELECT label.resource_name
+                                FROM label
+                                WHERE label.name = 'SD_DONE'
+                            )
+                        """
+
+                        label_response = ga_service.search(customer_id=customer_id, query=label_query)
+                        has_sd_done = len(list(label_response)) > 0
+
+                        if not has_sd_done:
+                            input_data.append({
+                                'customer_id': customer_id,
+                                'campaign_id': campaign_id,
+                                'campaign_name': campaign_name,
+                                'ad_group_id': ad_group_id
+                            })
+
+            except Exception as e:
+                logger.warning(f"Error processing customer {customer_id}: {e}")
+                continue
+
+        logger.info(f"Discovered {len(input_data)} ad groups to process")
+
+        if not input_data:
+            return {
+                "status": "no_ad_groups_found",
+                "message": "No ad groups found matching the criteria",
+                "total_items": 0
+            }
+
+        # Create job
+        from backend.thema_ads_service import thema_ads_service
+        job_id = thema_ads_service.create_job(input_data)
+
+        # Automatically start the job
+        if background_tasks:
+            background_tasks.add_task(thema_ads_service.process_job, job_id)
+
+        return {
+            "job_id": job_id,
+            "total_items": len(input_data),
+            "status": "processing",
+            "customers_found": len(beslist_customers),
+            "ad_groups_discovered": len(input_data)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Discovery failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/thema-ads/upload")
 async def upload_csv(file: UploadFile = File(...), background_tasks: BackgroundTasks = None):
     """

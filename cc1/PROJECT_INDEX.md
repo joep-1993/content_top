@@ -264,6 +264,7 @@ python-dotenv==1.0.0      # Environment variable management
 **Failed**: Actual errors (API failures, permission issues, etc.)
 
 ### Thema Ads Job Management
+- `POST /api/thema-ads/discover` - Auto-discover ad groups from Google Ads MCC account (see Auto-Discover Mode below)
 - `POST /api/thema-ads/upload` - Upload CSV file and auto-start processing (flexible format, see CSV Format below)
 - `POST /api/thema-ads/jobs/{job_id}/start` - Start processing job (deprecated - jobs auto-start on upload)
 - `POST /api/thema-ads/jobs/{job_id}/pause` - Pause running job
@@ -272,6 +273,18 @@ python-dotenv==1.0.0      # Environment variable management
 - `GET /api/thema-ads/jobs` - List all jobs (limit=20)
 - `GET /api/thema-ads/jobs/{job_id}/failed-items-csv` - Download failed and skipped items as CSV (includes status and reason columns)
 - `DELETE /api/thema-ads/jobs/{job_id}` - Delete job and all associated data (blocks running jobs)
+
+#### Auto-Discover Mode
+Frontend has two tabs:
+1. **CSV Upload**: Manual upload with customer_id and ad_group_id
+2. **Auto-Discover**: Automatically query Google Ads to find ad groups
+
+**Auto-Discover Criteria:**
+- MCC Account: 3011145605
+- Customer Accounts: Name starts with "Beslist.nl -"
+- Campaigns: Name starts with "HS/" AND status = ENABLED
+- Ad Groups: Status = ENABLED AND does NOT have SD_DONE label
+- Returns discovered ad groups and automatically starts processing
 
 #### CSV Format
 **Minimum columns** (campaign info fetched at runtime):

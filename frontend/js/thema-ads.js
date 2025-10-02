@@ -216,6 +216,75 @@ async function uploadCSV() {
     }
 }
 
+// Auto-discover ad groups from Google Ads
+async function discoverAdGroups() {
+    const discoverBtn = document.getElementById('discoverBtn');
+    const resultDiv = document.getElementById('discoverResult');
+
+    discoverBtn.disabled = true;
+    discoverBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Discovering...';
+    resultDiv.innerHTML = '';
+
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutes timeout
+
+        const response = await fetch('/api/thema-ads/discover', {
+            method: 'POST',
+            signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        const data = await response.json();
+
+        if (response.ok) {
+            if (data.status === 'no_ad_groups_found') {
+                showAlert('discoverResult',
+                    `ℹ️ No ad groups found matching the criteria.<br>
+                     Checked ${data.customers_found || 0} Beslist.nl accounts.`,
+                    'info'
+                );
+            } else {
+                showAlert('discoverResult',
+                    `✅ Discovery successful! Processing started automatically.<br>
+                     Job ID: ${data.job_id}<br>
+                     Found ${data.ad_groups_discovered} ad groups in ${data.customers_found} accounts.<br>
+                     <small>Check the "Processing Jobs" section below for progress.</small>`,
+                    'success'
+                );
+
+                // Refresh jobs list to show new job
+                refreshJobs();
+
+                // Switch to CSV Upload tab after a delay
+                setTimeout(() => {
+                    document.getElementById('csv-tab').click();
+                }, 3000);
+            }
+        } else {
+            const errorMsg = data.detail || 'Discovery failed';
+            showAlert('discoverResult', `❌ ${errorMsg}`, 'danger');
+        }
+    } catch (error) {
+        let errorMsg = 'Discovery failed: ';
+
+        if (error.name === 'AbortError') {
+            errorMsg += 'Request timed out. Discovery can take a while for large accounts.';
+        } else if (error.message.includes('NetworkError') || error.message.includes('Failed to fetch')) {
+            errorMsg += 'Network error. Please check your connection.';
+        } else {
+            errorMsg += error.message || error;
+        }
+
+        showAlert('discoverResult', `❌ ${errorMsg}`, 'danger');
+        console.error('Discovery error:', error);
+    } finally {
+        discoverBtn.disabled = false;
+        discoverBtn.innerHTML = '<i class="bi bi-search"></i> Discover & Process Ad Groups';
+    }
+}
+
 // Load jobs list with error handling
 async function refreshJobs() {
     const jobsList = document.getElementById('jobsList');

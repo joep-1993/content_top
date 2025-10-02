@@ -14,6 +14,7 @@ _Tasks currently being worked on_
 ## Completed
 _Finished tasks (move here when done)_
 
+- [x] Add auto-discover mode to find ad groups from Google Ads (MCC account, Beslist.nl accounts, HS/ campaigns, no SD_DONE label) #claude-session:2025-10-02
 - [x] Increase batch size from 1,000 to 5,000 for 5x performance improvement on large customers #claude-session:2025-10-02
 - [x] Fix timezone display issue (UTC timestamps now properly converted to local timezone) #claude-session:2025-10-02
 - [x] Update jobs list table to show Success/Failed/Skipped counts #claude-session:2025-10-02
