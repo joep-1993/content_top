@@ -131,6 +131,16 @@ SERVICE_ACCOUNT_FILE=C:\Users\YourName\Downloads\Python\service-account.json
 - **API Version**: Requires google-ads>=25.1.0 (currently using v28.0.0)
 - **Performance**: For 1M ads, consider running in chunks of 10k-50k
 
+## Docker Configuration
+
+### Uvicorn Server Settings (docker-compose.yml)
+```bash
+command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload --timeout-keep-alive 600 --timeout-graceful-shutdown 60
+```
+- **timeout-keep-alive**: 600 seconds (10 minutes) - supports large file uploads without connection drops
+- **timeout-graceful-shutdown**: 60 seconds - allows in-flight requests to complete during restart
+- **reload**: Auto-reload on code changes (development mode)
+
 ## Database Schema
 
 ### Thema Ads Job Tracking
