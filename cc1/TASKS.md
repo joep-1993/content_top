@@ -4,7 +4,6 @@ _Active task tracking. Update when: starting work, completing tasks, finding blo
 ## Current Sprint
 _Active tasks for immediate work_
 
-- [ ] Label the 4 unlabeled ads created in initial run #priority:high #estimate:10m
 - [ ] Verify AI integration #priority:medium #estimate:15m
 - [ ] Customize for specific use case #priority:medium
 
@@ -14,6 +13,8 @@ _Tasks currently being worked on_
 ## Completed
 _Finished tasks (move here when done)_
 
+- [x] Label the 4 unlabeled ads created in initial run (verified all 4 ads already have SINGLES_DAY and THEMA_AD labels) #claude-session:2025-10-02
+- [x] Fix Auto-Discover button alignment (changed btn-success to btn-primary to match CSV upload button) #claude-session:2025-10-02
 - [x] Optimize auto-discover with batched label checking (5000x faster: 30 API calls instead of 146k) #claude-session:2025-10-02
 - [x] Add limit parameter to auto-discover (prevents overwhelming system, allows testing) #claude-session:2025-10-02
 - [x] Add auto-discover mode to find ad groups from Google Ads (MCC account, Beslist.nl accounts, HS/ campaigns, no SD_DONE label) #claude-session:2025-10-02
