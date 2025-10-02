@@ -69,7 +69,7 @@ async def prefetch_existing_ads_bulk(
             logger.warning(f"Could not fetch exclude label: {e}")
 
         # Batch queries to avoid FILTER_HAS_TOO_MANY_VALUES error
-        BATCH_SIZE = 5000
+        BATCH_SIZE = 7500
         ads_map = {}
 
         try:
@@ -172,7 +172,7 @@ async def prefetch_ad_group_labels(
             return ag_labels_map
 
         # Batch queries to avoid FILTER_HAS_TOO_MANY_VALUES error
-        BATCH_SIZE = 5000
+        BATCH_SIZE = 7500
         try:
             for i in range(0, len(ad_group_resources), BATCH_SIZE):
                 batch = ad_group_resources[i:i + BATCH_SIZE]

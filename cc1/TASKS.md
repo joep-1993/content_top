@@ -14,6 +14,7 @@ _Tasks currently being worked on_
 ## Completed
 _Finished tasks (move here when done)_
 
+- [x] Increase BATCH_SIZE from 5,000 to 7,500 for additional 33% performance improvement (fewer API calls for large customers) #claude-session:2025-10-02
 - [x] Fix Excel precision loss by using ad_group_name lookups (added ad_group_name column, resolve correct IDs from Google Ads API) #claude-session:2025-10-02
 - [x] Fix tab text visibility when selected (active tab text now blue instead of white-on-white) #claude-session:2025-10-02
 - [x] Label the 4 unlabeled ads created in initial run (verified all 4 ads already have SINGLES_DAY and THEMA_AD labels) #claude-session:2025-10-02

@@ -172,7 +172,7 @@ for encoding in encodings:
 - **Cause**: WHERE IN clause with too many values (e.g., 50,000+ ad group resources)
 - **Solution**: Batch queries into chunks of resources per query
 ```python
-BATCH_SIZE = 5000  # Safe limit found through testing (50k+ fails, 5k works)
+BATCH_SIZE = 7500  # Optimized limit (50k+ fails, 5k safe, 7.5k optimal)
 for i in range(0, len(resources), BATCH_SIZE):
     batch = resources[i:i + BATCH_SIZE]
     resources_str = ", ".join(f"'{r}'" for r in batch)
@@ -181,7 +181,10 @@ for i in range(0, len(resources), BATCH_SIZE):
     # Process batch results
 ```
 - **Impact**: Customers with 10k+ ad groups were failing completely before this fix
-- **Performance**: Increasing from 1,000 to 5,000 provides ~5x speedup for large customers (fewer API calls)
+- **Performance**:
+  - 1,000 → 5,000: ~5x speedup
+  - 5,000 → 7,500: Additional ~33% speedup (fewer API calls)
+  - Example: 54,968 ad groups = 11 batches @ 5k vs 8 batches @ 7.5k (27% fewer calls)
 
 ### Large CSV Upload Timeouts
 - **Error**: Connection timeout during upload, "Failed to load jobs list (request timed out)"
