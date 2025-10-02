@@ -223,6 +223,25 @@ async def get_status():
 
 # ==================== Thema Ads Endpoints ====================
 
+def convert_scientific_notation(value: str) -> str:
+    """Convert scientific notation to regular number string."""
+    if not value:
+        return value
+
+    value = value.strip()
+
+    # Check if it's in scientific notation (e.g., 1.76256E+11 or 1.76256e+11)
+    if 'E' in value.upper():
+        try:
+            # Convert to float, then to int, then to string (removes scientific notation)
+            return str(int(float(value)))
+        except (ValueError, OverflowError):
+            # If conversion fails, return original value
+            return value
+
+    return value
+
+
 @app.post("/api/thema-ads/upload")
 async def upload_csv(file: UploadFile = File(...)):
     """
@@ -270,9 +289,13 @@ async def upload_csv(file: UploadFile = File(...)):
                 logger.info(f"CSV headers found: {headers_seen}")
 
             if 'customer_id' in row and 'ad_group_id' in row:
+                # Convert scientific notation to regular numbers (Excel export issue)
+                customer_id = convert_scientific_notation(row['customer_id'])
+                ad_group_id = convert_scientific_notation(row['ad_group_id'])
+
                 # Remove dashes from customer_id (Google Ads API requirement)
-                customer_id = row['customer_id'].strip().replace('-', '')
-                ad_group_id = row['ad_group_id'].strip()
+                customer_id = customer_id.strip().replace('-', '')
+                ad_group_id = ad_group_id.strip()
 
                 # Skip empty rows
                 if not customer_id or not ad_group_id:
@@ -285,7 +308,8 @@ async def upload_csv(file: UploadFile = File(...)):
 
                 # Add optional campaign info if provided
                 if 'campaign_id' in row and row['campaign_id'].strip():
-                    item['campaign_id'] = row['campaign_id'].strip()
+                    campaign_id = convert_scientific_notation(row['campaign_id'])
+                    item['campaign_id'] = campaign_id.strip()
                 if 'campaign_name' in row and row['campaign_name'].strip():
                     item['campaign_name'] = row['campaign_name'].strip()
 

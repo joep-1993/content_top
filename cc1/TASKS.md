@@ -14,6 +14,7 @@ _Tasks currently being worked on_
 ## Completed
 _Finished tasks (move here when done)_
 
+- [x] Fix scientific notation in CSV uploads (Excel converts large IDs to 1.76256E+11 format) #claude-session:2025-10-02
 - [x] Add CSV download for failed items (export customer_id, ad_group_id, error_message) #claude-session:2025-10-02
 - [x] Fix FILTER_HAS_TOO_MANY_VALUES error by batching prefetch queries (1000 ad groups per query) #claude-session:2025-10-02
 - [x] Add SD_DONE label to processed ad groups and skip already-processed ad groups #claude-session:2025-10-02

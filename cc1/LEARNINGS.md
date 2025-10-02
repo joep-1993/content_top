@@ -89,6 +89,26 @@ if not customer_id or not ad_group_id:
 customer_id = row['customer_id'].strip().replace('-', '')
 ```
 
+### Excel Scientific Notation in CSV
+- **Error**: `BAD_RESOURCE_ID` - "Requested entity was not found" when ad_group_id = "1,76256E+11"
+- **Cause**: Excel automatically converts large numbers to scientific notation when opening/saving CSV files
+- **Example**: `176256000000000` becomes `1.76256E+11`
+- **Impact**: All items fail with invalid resource IDs
+- **Solution**: Convert scientific notation back to full numbers during CSV parsing
+```python
+def convert_scientific_notation(value: str) -> str:
+    if 'E' in value.upper():
+        try:
+            return str(int(float(value)))  # 1.76256E+11 → 176256000000000
+        except (ValueError, OverflowError):
+            return value
+    return value
+
+customer_id = convert_scientific_notation(row['customer_id'])
+ad_group_id = convert_scientific_notation(row['ad_group_id'])
+```
+- **Prevention**: Export CSV as "CSV UTF-8" or use "Text" format for ID columns in Excel
+
 ### CSV Encoding Issues
 - **Error**: `'utf-8' codec can't decode byte 0xe8 in position X: invalid continuation byte`
 - **Cause**: CSV file exported from Excel or other tools using non-UTF-8 encoding (Windows-1252, ISO-8859-1)
