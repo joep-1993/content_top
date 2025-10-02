@@ -171,7 +171,7 @@ async def prefetch_ad_group_labels(
                         ag_labels_map[row.ad_group_label.ad_group] = True
 
             has_label_count = sum(1 for v in ag_labels_map.values() if v)
-            logger.info(f"Found {has_label_count} ad groups with {label_name} label (checked in {len(ad_group_resources)//BATCH_SIZE + 1} batches)")
+            logger.info(f"Found {has_label_count} ad groups with {label_name} label (checked in {len(ad_group_resources)//batch_size + 1} batches)")
 
         except Exception as e:
             logger.warning(f"Failed to check ad group labels: {e}")
