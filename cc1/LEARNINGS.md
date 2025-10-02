@@ -103,6 +103,22 @@ for encoding in encodings:
         continue
 ```
 
+### Large CSV Upload Timeouts
+- **Error**: Connection timeout during upload, "Failed to load jobs list (request timed out)"
+- **Cause**: Individual row-by-row database inserts extremely slow for large files (100k+ rows)
+- **Solution**: Use batch inserts with executemany() and dynamic timeouts
+```python
+# Batch insert instead of loop
+input_values = [(job_id, item['customer_id'], ...) for item in input_data]
+cur.executemany("INSERT INTO table VALUES (%s, %s, ...)", input_values)
+
+# Dynamic timeout on frontend based on file size
+baseTimeout = 120000  # 2 minutes
+extraTimeout = Math.floor(fileSize / (5 * 1024 * 1024)) * 30000  # +30s per 5MB
+uploadTimeout = Math.min(baseTimeout + extraTimeout, 600000)  # Max 10 min
+```
+- **Performance**: Batch inserts are 100-1000x faster than individual inserts for large datasets
+
 ### GitHub Push Protection Blocking Secrets
 - **Error**: `Push cannot contain secrets` - Google OAuth tokens, Azure secrets detected
 - **Cause**: Hardcoded credentials in thema_ads script were committed to git history

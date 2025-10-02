@@ -138,7 +138,12 @@ async function uploadCSV() {
         uploadButton.disabled = true;
         uploadButton.textContent = 'Uploading...';
     }
-    showAlert('uploadResult', 'Uploading CSV file...', 'info');
+
+    const fileSizeMB = (file.size / 1024 / 1024).toFixed(2);
+    const uploadMsg = file.size > 5 * 1024 * 1024
+        ? `Uploading ${fileSizeMB}MB CSV file... This may take a few minutes for large files.`
+        : 'Uploading CSV file...';
+    showAlert('uploadResult', uploadMsg, 'info');
 
     try {
 
@@ -147,9 +152,16 @@ async function uploadCSV() {
 
         console.log('Sending file to server...');
 
-        // Upload with timeout
+        // Upload with dynamic timeout based on file size
+        // Base timeout: 2 minutes, plus 30 seconds per 5MB
+        const baseTimeout = 120000; // 2 minutes
+        const extraTimeout = Math.floor(file.size / (5 * 1024 * 1024)) * 30000; // 30s per 5MB
+        const uploadTimeout = Math.min(baseTimeout + extraTimeout, 600000); // Max 10 minutes
+
+        console.log(`Upload timeout set to ${uploadTimeout / 1000} seconds for ${(file.size / 1024 / 1024).toFixed(2)}MB file`);
+
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout for large files
+        const timeoutId = setTimeout(() => controller.abort(), uploadTimeout);
 
         const response = await fetch('/api/thema-ads/upload', {
             method: 'POST',
@@ -210,7 +222,7 @@ async function refreshJobs() {
 
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // Increased to 30s for large datasets
 
         const response = await fetch('/api/thema-ads/jobs', {
             signal: controller.signal

@@ -55,7 +55,7 @@ class ThemaAdsService:
             raise
 
     def create_job(self, input_data: List[Dict]) -> int:
-        """Create a new processing job and store input data."""
+        """Create a new processing job and store input data using batch inserts."""
         conn = get_db_connection()
         cur = conn.cursor()
 
@@ -69,24 +69,33 @@ class ThemaAdsService:
 
             job_id = cur.fetchone()['id']
 
-            # Store input data
-            for item in input_data:
-                campaign_id = item.get('campaign_id')
-                campaign_name = item.get('campaign_name')
+            # Batch insert input data (much faster than individual inserts)
+            if input_data:
+                input_values = [
+                    (job_id, item['customer_id'], item.get('campaign_id'),
+                     item.get('campaign_name'), item['ad_group_id'])
+                    for item in input_data
+                ]
 
-                cur.execute("""
+                cur.executemany("""
                     INSERT INTO thema_ads_input_data (job_id, customer_id, campaign_id, campaign_name, ad_group_id)
                     VALUES (%s, %s, %s, %s, %s)
-                """, (job_id, item['customer_id'], campaign_id, campaign_name, item['ad_group_id']))
+                """, input_values)
 
-                # Create job item
-                cur.execute("""
+                # Batch insert job items
+                job_item_values = [
+                    (job_id, item['customer_id'], item.get('campaign_id'),
+                     item.get('campaign_name'), item['ad_group_id'], 'pending')
+                    for item in input_data
+                ]
+
+                cur.executemany("""
                     INSERT INTO thema_ads_job_items (job_id, customer_id, campaign_id, campaign_name, ad_group_id, status)
-                    VALUES (%s, %s, %s, %s, %s, 'pending')
-                """, (job_id, item['customer_id'], campaign_id, campaign_name, item['ad_group_id']))
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, job_item_values)
 
             conn.commit()
-            logger.info(f"Created job {job_id} with {len(input_data)} ad groups")
+            logger.info(f"Created job {job_id} with {len(input_data)} ad groups using batch inserts")
             return job_id
 
         finally:

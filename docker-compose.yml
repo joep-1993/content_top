@@ -15,7 +15,7 @@ services:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/myapp
     depends_on:
       - db
-    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload --timeout-keep-alive 600 --timeout-graceful-shutdown 60
 
   db:
     image: postgres:15
