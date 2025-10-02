@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks
+from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse
@@ -247,14 +247,24 @@ def convert_scientific_notation(value: str) -> str:
 
 
 @app.post("/api/thema-ads/discover")
-async def discover_ad_groups(background_tasks: BackgroundTasks = None, limit: int = None):
+async def discover_ad_groups(
+    background_tasks: BackgroundTasks = None,
+    limit: int = None,
+    batch_size: int = 7500
+):
     """
     Auto-discover ad groups from Google Ads MCC account.
     Finds all 'Beslist.nl -' accounts, campaigns starting with 'HS/',
     and ad groups without SD_DONE label.
+
+    Args:
+        limit: Optional limit on number of ad groups to discover
+        batch_size: Batch size for API queries (default: 7500)
     """
     import logging
     logger = logging.getLogger(__name__)
+
+    logger.info(f"Discover parameters: limit={limit}, batch_size={batch_size}")
 
     try:
         from pathlib import Path
@@ -427,9 +437,9 @@ async def discover_ad_groups(background_tasks: BackgroundTasks = None, limit: in
                 "total_items": 0
             }
 
-        # Create job
+        # Create job with batch_size
         from backend.thema_ads_service import thema_ads_service
-        job_id = thema_ads_service.create_job(input_data)
+        job_id = thema_ads_service.create_job(input_data, batch_size=batch_size)
 
         # Automatically start the job
         if background_tasks:
@@ -451,13 +461,23 @@ async def discover_ad_groups(background_tasks: BackgroundTasks = None, limit: in
 
 
 @app.post("/api/thema-ads/upload")
-async def upload_csv(file: UploadFile = File(...), background_tasks: BackgroundTasks = None):
+async def upload_csv(
+    file: UploadFile = File(...),
+    background_tasks: BackgroundTasks = None,
+    batch_size: int = Form(7500)
+):
     """
     Upload CSV file with customer_id and ad_group_id columns.
     Creates a new job and automatically starts processing.
+
+    Args:
+        file: CSV file to upload
+        batch_size: Batch size for API queries (default: 7500)
     """
     import logging
     logger = logging.getLogger(__name__)
+
+    logger.info(f"Upload parameters: batch_size={batch_size}")
 
     try:
         logger.info(f"Receiving file upload: {file.filename}")
@@ -537,10 +557,10 @@ async def upload_csv(file: UploadFile = File(...), background_tasks: BackgroundT
                 detail=error_msg
             )
 
-        # Create job
+        # Create job with batch_size
         logger.info("Creating job in database...")
-        job_id = thema_ads_service.create_job(input_data)
-        logger.info(f"Job created with ID: {job_id}")
+        job_id = thema_ads_service.create_job(input_data, batch_size=batch_size)
+        logger.info(f"Job created with ID: {job_id}, batch_size: {batch_size}")
 
         # Automatically start the job
         if background_tasks:

@@ -45,11 +45,13 @@ logger = logging.getLogger(__name__)
 class ThemaAdsProcessor:
     """High-performance processor for themed ad campaigns."""
 
-    def __init__(self, config):
+    def __init__(self, config, batch_size: int = 7500):
         self.config = config
         self.client = initialize_client(config.google_ads)
         self.theme = "singles_day"  # Configurable
         self.label_names = ["SINGLES_DAY", "THEMA_AD", "THEMA_ORIGINAL", "BF_2025", "SD_DONE"]
+        self.batch_size = batch_size
+        logger.info(f"Initialized ThemaAdsProcessor with batch_size={batch_size}")
 
     async def process_all(self, inputs: List[AdGroupInput]) -> List[ProcessingResult]:
         """Process all ad groups with maximum parallelization."""
@@ -186,7 +188,8 @@ class ThemaAdsProcessor:
             cached_data = await prefetch_customer_data(
                 self.client,
                 customer_id,
-                ad_group_resources
+                ad_group_resources,
+                batch_size=self.batch_size
             )
 
             # Step 2: Ensure all labels exist (1 API call)

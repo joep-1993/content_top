@@ -146,11 +146,15 @@ async function uploadCSV() {
     showAlert('uploadResult', uploadMsg, 'info');
 
     try {
+        // Get batch size from input field
+        const batchSizeInput = document.getElementById('csvBatchSize');
+        const batchSize = batchSizeInput ? parseInt(batchSizeInput.value) || 7500 : 7500;
 
         const formData = new FormData();
         formData.append('file', file);
+        formData.append('batch_size', batchSize);
 
-        console.log('Sending file to server...');
+        console.log('Sending file to server with batch_size:', batchSize);
 
         // Upload with dynamic timeout based on file size
         // Base timeout: 2 minutes, plus 30 seconds per 5MB
@@ -221,6 +225,7 @@ async function discoverAdGroups() {
     const discoverBtn = document.getElementById('discoverBtn');
     const resultDiv = document.getElementById('discoverResult');
     const limitInput = document.getElementById('discoverLimit');
+    const batchSizeInput = document.getElementById('discoverBatchSize');
 
     discoverBtn.disabled = true;
     discoverBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Discovering...';
@@ -230,11 +235,20 @@ async function discoverAdGroups() {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutes timeout
 
-        // Build URL with optional limit parameter
+        // Build URL with optional limit and batch_size parameters
         let url = '/api/thema-ads/discover';
+        const params = new URLSearchParams();
+
         const limit = limitInput.value ? parseInt(limitInput.value) : null;
         if (limit) {
-            url += `?limit=${limit}`;
+            params.append('limit', limit);
+        }
+
+        const batchSize = batchSizeInput ? parseInt(batchSizeInput.value) || 7500 : 7500;
+        params.append('batch_size', batchSize);
+
+        if (params.toString()) {
+            url += `?${params.toString()}`;
         }
 
         const response = await fetch(url, {

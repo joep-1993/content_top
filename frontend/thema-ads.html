@@ -44,6 +44,11 @@
                                 <div class="mb-3">
                                     <input type="file" class="form-control" id="csvFile" accept=".csv">
                                 </div>
+                                <div class="mb-3">
+                                    <label for="csvBatchSize" class="form-label">Batch Size</label>
+                                    <input type="number" class="form-control" id="csvBatchSize" value="7500" min="1000" max="10000" style="max-width: 300px;">
+                                    <small class="text-muted">Number of items per API batch query (1000-10000, default: 7500)</small>
+                                </div>
                                 <button class="btn btn-primary" onclick="uploadCSV()">Upload & Create Job</button>
                                 <div id="uploadResult" class="mt-3"></div>
                             </div>
@@ -63,6 +68,11 @@
                                     <label for="discoverLimit" class="form-label">Limit (optional)</label>
                                     <input type="number" class="form-control" id="discoverLimit" placeholder="Leave empty for no limit" min="1" max="100000" style="max-width: 300px;">
                                     <small class="text-muted">Recommended: Start with 100-1000 for testing</small>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="discoverBatchSize" class="form-label">Batch Size</label>
+                                    <input type="number" class="form-control" id="discoverBatchSize" value="7500" min="1000" max="10000" style="max-width: 300px;">
+                                    <small class="text-muted">Number of items per API batch query (1000-10000, default: 7500)</small>
                                 </div>
                                 <button class="btn btn-primary" onclick="discoverAdGroups()" id="discoverBtn">
                                     <i class="bi bi-search"></i> Discover & Process Ad Groups

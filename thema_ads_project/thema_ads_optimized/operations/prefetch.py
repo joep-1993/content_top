@@ -42,7 +42,8 @@ async def prefetch_existing_ads_bulk(
     client: GoogleAdsClient,
     customer_id: str,
     ad_group_resources: List[str],
-    exclude_label_name: str = "BF_2025"
+    exclude_label_name: str = "BF_2025",
+    batch_size: int = 7500
 ) -> Dict[str, ExistingAd]:
     """Fetch all existing RSAs for multiple ad groups in batched queries."""
 
@@ -68,13 +69,12 @@ async def prefetch_existing_ads_bulk(
         except Exception as e:
             logger.warning(f"Could not fetch exclude label: {e}")
 
-        # Batch queries to avoid FILTER_HAS_TOO_MANY_VALUES error
-        BATCH_SIZE = 7500
+        # Use dynamic batch size
         ads_map = {}
 
         try:
-            for i in range(0, len(ad_group_resources), BATCH_SIZE):
-                batch = ad_group_resources[i:i + BATCH_SIZE]
+            for i in range(0, len(ad_group_resources), batch_size):
+                batch = ad_group_resources[i:i + batch_size]
                 resources_str = ", ".join(f"'{r}'" for r in batch)
 
                 query = f"""
@@ -141,7 +141,8 @@ async def prefetch_ad_group_labels(
     client: GoogleAdsClient,
     customer_id: str,
     ad_group_resources: List[str],
-    label_name: str = "SD_DONE"
+    label_name: str = "SD_DONE",
+    batch_size: int = 7500
 ) -> Dict[str, bool]:
     """Check which ad groups have a specific label. Returns {ad_group_resource: has_label}."""
 
@@ -171,11 +172,10 @@ async def prefetch_ad_group_labels(
             logger.info(f"Label {label_name} doesn't exist yet, no ad groups to skip")
             return ag_labels_map
 
-        # Batch queries to avoid FILTER_HAS_TOO_MANY_VALUES error
-        BATCH_SIZE = 7500
+        # Use dynamic batch size
         try:
-            for i in range(0, len(ad_group_resources), BATCH_SIZE):
-                batch = ad_group_resources[i:i + BATCH_SIZE]
+            for i in range(0, len(ad_group_resources), batch_size):
+                batch = ad_group_resources[i:i + batch_size]
                 resources_str = ", ".join(f"'{r}'" for r in batch)
 
                 query = f"""
@@ -207,16 +207,17 @@ async def prefetch_ad_group_labels(
 async def prefetch_customer_data(
     client: GoogleAdsClient,
     customer_id: str,
-    ad_group_resources: List[str]
+    ad_group_resources: List[str],
+    batch_size: int = 7500
 ) -> CachedData:
     """Prefetch all required data for a customer in parallel."""
 
-    logger.info(f"Prefetching data for customer {customer_id} ({len(ad_group_resources)} ad groups)")
+    logger.info(f"Prefetching data for customer {customer_id} ({len(ad_group_resources)} ad groups, batch_size={batch_size})")
 
     # Fetch labels, ads, and ad group labels in parallel
     labels_task = prefetch_labels(client, customer_id)
-    ads_task = prefetch_existing_ads_bulk(client, customer_id, ad_group_resources)
-    ag_labels_task = prefetch_ad_group_labels(client, customer_id, ad_group_resources, "SD_DONE")
+    ads_task = prefetch_existing_ads_bulk(client, customer_id, ad_group_resources, batch_size=batch_size)
+    ag_labels_task = prefetch_ad_group_labels(client, customer_id, ad_group_resources, "SD_DONE", batch_size=batch_size)
 
     labels, existing_ads, ag_has_sd_done = await asyncio.gather(labels_task, ads_task, ag_labels_task)
 

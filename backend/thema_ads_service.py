@@ -54,18 +54,18 @@ class ThemaAdsService:
             logger.error(f"Failed to fetch campaign info: {e}")
             raise
 
-    def create_job(self, input_data: List[Dict]) -> int:
+    def create_job(self, input_data: List[Dict], batch_size: int = 7500) -> int:
         """Create a new processing job and store input data using batch inserts."""
         conn = get_db_connection()
         cur = conn.cursor()
 
         try:
-            # Create job
+            # Create job with batch_size
             cur.execute("""
-                INSERT INTO thema_ads_jobs (status, total_ad_groups)
-                VALUES ('pending', %s)
+                INSERT INTO thema_ads_jobs (status, total_ad_groups, batch_size)
+                VALUES ('pending', %s, %s)
                 RETURNING id
-            """, (len(input_data),))
+            """, (len(input_data), batch_size))
 
             job_id = cur.fetchone()['id']
 
@@ -268,6 +268,11 @@ class ThemaAdsService:
             # Load config
             config = load_config_from_env()
 
+            # Get job details including batch_size
+            job_details = self.get_job_status(job_id)
+            batch_size = job_details.get('batch_size', 7500)
+            logger.info(f"Job {job_id} will use batch_size: {batch_size}")
+
             # Get pending items
             pending_items = self.get_pending_items(job_id)
 
@@ -309,11 +314,11 @@ class ThemaAdsService:
             self.current_job_id = job_id
             self.is_running = True
 
-            logger.info(f"Starting job {job_id} with {len(inputs)} items")
+            logger.info(f"Starting job {job_id} with {len(inputs)} items, batch_size={batch_size}")
 
             # Import and initialize processor
             from main_optimized import ThemaAdsProcessor
-            processor = ThemaAdsProcessor(config)
+            processor = ThemaAdsProcessor(config, batch_size=batch_size)
 
             # Process with custom callback
             results = await self._process_with_tracking(processor, inputs, job_id)
