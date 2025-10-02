@@ -426,5 +426,19 @@ else:
 # CSV includes: customer_id, ad_group_id, status, reason
 ```
 
+### UTC Timestamps with JavaScript Timezone Conversion
+- **Error**: Timestamps display 2 hours off (database shows 17:10 but user sees 17:10 instead of 19:10)
+- **Cause**: PostgreSQL stores timestamps in UTC without timezone indicator, JavaScript interprets as local time
+- **Solution**: Append 'Z' to timestamp strings to indicate UTC before creating Date object
+```javascript
+function formatDate(dateString) {
+    if (!dateString) return '-';
+    // Database stores timestamps in UTC, append 'Z' to indicate UTC timezone
+    const date = new Date(dateString + 'Z');
+    return date.toLocaleString();  // Automatically converts to user's local timezone
+}
+```
+- **Database Configuration**: PostgreSQL timezone set to UTC, columns use TIMESTAMP (without time zone)
+
 ---
 _Last updated: 2025-10-02_

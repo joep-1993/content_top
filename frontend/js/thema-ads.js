@@ -618,7 +618,8 @@ function getStatusClass(status) {
 
 function formatDate(dateString) {
     if (!dateString) return '-';
-    const date = new Date(dateString);
+    // Database stores timestamps in UTC, append 'Z' to indicate UTC timezone
+    const date = new Date(dateString + 'Z');
     return date.toLocaleString();
 }
 
