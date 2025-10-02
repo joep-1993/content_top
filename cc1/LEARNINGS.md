@@ -62,6 +62,37 @@ docker exec -it <container> bash  # Enter container
 - **Cause**: Empty lists evaluate to False in Python conditionals (e.g., `if new_ads and label_ops:`)
 - **Solution**: Check only the required condition (e.g., `if new_ads:`), not empty supporting lists
 
+### Results Mapping Bug in Batch Processing
+- **Error**: All items marked as failed with no error message when ad operations list is empty
+- **Cause**: Using index-based success check `success=i < len(new_ad_resources)` fails when no operations were built
+- **Impact**: Ad groups with no existing ads or no final URLs incorrectly marked as failed without error messages
+- **Solution**: Separately track which inputs had operations built vs which failed pre-checks
+```python
+# Track separately
+processed_inputs = []  # Had operations built
+failed_inputs = []     # Failed pre-checks (no existing ad, no final URL)
+skipped_ags = []       # Already processed (has SD_DONE label)
+
+# Build operations
+for inp, ag_resource in zip(inputs, ad_group_resources):
+    if already_has_label:
+        skipped_ags.append(inp)
+    elif result := build_operations(inp):
+        processed_inputs.append(inp)
+        ad_operations.append(result)
+    else:
+        failed_inputs.append(inp)
+
+# Map results correctly
+for i, inp in enumerate(processed_inputs):
+    # These should all succeed since they had operations
+    results.append(ProcessingResult(success=True, new_ad_resource=new_ad_resources[i]))
+
+for inp in failed_inputs:
+    # These failed pre-checks
+    results.append(ProcessingResult(success=False, error="No existing ad found or no final URL available"))
+```
+
 ### Module Import Errors in Docker
 - **Error**: `ModuleNotFoundError: No module named 'database'`
 - **Cause**: Relative imports don't work when running as module in Docker container

@@ -136,6 +136,7 @@ class ThemaAdsProcessor:
 
             skipped_ags = []
             processed_inputs = []
+            failed_inputs = []  # Track inputs that failed pre-checks
 
             for inp, ag_resource in zip(inputs, ad_group_resources):
                 # Skip ad groups that already have SD_DONE label
@@ -143,8 +144,6 @@ class ThemaAdsProcessor:
                     logger.info(f"Skipping ad group {inp.ad_group_id} - already has SD_DONE label")
                     skipped_ags.append(inp)
                     continue
-
-                processed_inputs.append(inp)
 
                 result = self._build_operations_for_ad_group(
                     inp,
@@ -154,11 +153,16 @@ class ThemaAdsProcessor:
                 )
 
                 if result:
+                    # Track inputs that successfully built operations
+                    processed_inputs.append(inp)
                     ad_operations.append(result["ad_data"])
                     label_operations_ads.extend(result["ad_labels"])
                     label_operations_ad_groups.extend(result["ag_labels"])
                     if result["old_ad"]:
                         old_ads_to_label.append(result["old_ad"])
+                else:
+                    # Track inputs that failed pre-checks (no existing ad or no final URL)
+                    failed_inputs.append(inp)
 
             if skipped_ags:
                 logger.info(f"Skipped {len(skipped_ags)} ad groups that already have SD_DONE label")
@@ -219,17 +223,29 @@ class ThemaAdsProcessor:
             # Build results
             results = []
 
-            # Add results for processed ad groups
+            # Add results for successfully processed ad groups
             for i, inp in enumerate(processed_inputs):
-                results.append(
-                    ProcessingResult(
-                        customer_id=customer_id,
-                        ad_group_id=inp.ad_group_id,
-                        success=i < len(new_ad_resources),
-                        new_ad_resource=new_ad_resources[i] if i < len(new_ad_resources) else None,
-                        operations_count=1
+                if i < len(new_ad_resources):
+                    results.append(
+                        ProcessingResult(
+                            customer_id=customer_id,
+                            ad_group_id=inp.ad_group_id,
+                            success=True,
+                            new_ad_resource=new_ad_resources[i],
+                            operations_count=1
+                        )
                     )
-                )
+                else:
+                    # Should not happen, but handle gracefully
+                    results.append(
+                        ProcessingResult(
+                            customer_id=customer_id,
+                            ad_group_id=inp.ad_group_id,
+                            success=False,
+                            error="Ad creation failed (no resource returned)",
+                            operations_count=0
+                        )
+                    )
 
             # Add results for skipped ad groups (mark as success since they were already processed)
             for inp in skipped_ags:
@@ -240,6 +256,18 @@ class ThemaAdsProcessor:
                         success=True,
                         new_ad_resource=None,
                         error="Already processed (has SD_DONE label)",
+                        operations_count=0
+                    )
+                )
+
+            # Add results for failed ad groups (no existing ad or no final URL)
+            for inp in failed_inputs:
+                results.append(
+                    ProcessingResult(
+                        customer_id=customer_id,
+                        ad_group_id=inp.ad_group_id,
+                        success=False,
+                        error="No existing ad found or no final URL available",
                         operations_count=0
                     )
                 )
