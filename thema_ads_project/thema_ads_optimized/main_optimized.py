@@ -49,7 +49,7 @@ class ThemaAdsProcessor:
         self.config = config
         self.client = initialize_client(config.google_ads)
         self.theme = "singles_day"  # Configurable
-        self.label_names = ["SINGLES_DAY", "THEMA_AD", "THEMA_ORIGINAL", "BF_2025"]
+        self.label_names = ["SINGLES_DAY", "THEMA_AD", "THEMA_ORIGINAL", "BF_2025", "SD_DONE"]
 
     async def process_all(self, inputs: List[AdGroupInput]) -> List[ProcessingResult]:
         """Process all ad groups with maximum parallelization."""
@@ -134,7 +134,18 @@ class ThemaAdsProcessor:
             label_operations_ad_groups = []
             old_ads_to_label = []
 
+            skipped_ags = []
+            processed_inputs = []
+
             for inp, ag_resource in zip(inputs, ad_group_resources):
+                # Skip ad groups that already have SD_DONE label
+                if cached_data.ad_group_labels and cached_data.ad_group_labels.get(ag_resource, False):
+                    logger.info(f"Skipping ad group {inp.ad_group_id} - already has SD_DONE label")
+                    skipped_ags.append(inp)
+                    continue
+
+                processed_inputs.append(inp)
+
                 result = self._build_operations_for_ad_group(
                     inp,
                     ag_resource,
@@ -148,6 +159,9 @@ class ThemaAdsProcessor:
                     label_operations_ad_groups.extend(result["ag_labels"])
                     if result["old_ad"]:
                         old_ads_to_label.append(result["old_ad"])
+
+            if skipped_ags:
+                logger.info(f"Skipped {len(skipped_ags)} ad groups that already have SD_DONE label")
 
             logger.info(
                 f"Customer {customer_id}: Prepared {len(ad_operations)} ads, "
@@ -204,7 +218,9 @@ class ThemaAdsProcessor:
 
             # Build results
             results = []
-            for i, inp in enumerate(inputs):
+
+            # Add results for processed ad groups
+            for i, inp in enumerate(processed_inputs):
                 results.append(
                     ProcessingResult(
                         customer_id=customer_id,
@@ -212,6 +228,19 @@ class ThemaAdsProcessor:
                         success=i < len(new_ad_resources),
                         new_ad_resource=new_ad_resources[i] if i < len(new_ad_resources) else None,
                         operations_count=1
+                    )
+                )
+
+            # Add results for skipped ad groups (mark as success since they were already processed)
+            for inp in skipped_ags:
+                results.append(
+                    ProcessingResult(
+                        customer_id=customer_id,
+                        ad_group_id=inp.ad_group_id,
+                        success=True,
+                        new_ad_resource=None,
+                        error="Already processed (has SD_DONE label)",
+                        operations_count=0
                     )
                 )
 
@@ -275,7 +304,8 @@ class ThemaAdsProcessor:
         # Build label operations
         ad_labels = []  # Will be filled after ad creation
         ag_labels = [
-            (ad_group_resource, labels["BF_2025"])
+            (ad_group_resource, labels["BF_2025"]),
+            (ad_group_resource, labels["SD_DONE"])
         ]
 
         return {

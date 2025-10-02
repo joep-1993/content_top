@@ -182,6 +182,24 @@ results = await asyncio.gather(*tasks)
 - **Example**: Create 1000 ads in one mutate_ad_group_ads() call
 - **Limit**: Google Ads API supports up to 10,000 operations per request
 
+### Idempotent Processing with Label-Based Tracking
+- **Pattern**: Label processed items and skip them on subsequent runs
+- **Benefit**: Prevent duplicate processing, enable safe re-runs, resume after failures
+- **Example**: Label ad groups with "SD_DONE" after processing, skip any with this label
+```python
+# Prefetch ad group labels
+ag_labels_map = await prefetch_ad_group_labels(client, customer_id, ad_groups, "SD_DONE")
+
+# Skip already processed
+for inp, ag_resource in zip(inputs, ad_group_resources):
+    if ag_labels_map.get(ag_resource, False):
+        logger.info(f"Skipping {inp.ad_group_id} - already has SD_DONE label")
+        continue
+    # ... process ad group ...
+    # After processing, label it
+    await label_ad_groups_batch(client, customer_id, [(ag_resource, sd_done_label)])
+```
+
 ### Multi-Stage Docker Builds
 - **Pattern**: Separate builder stage (with gcc, build tools) from runtime stage
 - **Benefit**: Smaller final image (build dependencies not included)

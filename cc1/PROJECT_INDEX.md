@@ -240,6 +240,18 @@ python-dotenv==1.0.0      # Environment variable management
 - `POST /api/process-urls` - Process batch of URLs for SEO content
 - `GET /api/status` - Get SEO processing status
 
+### Labels Applied by Thema Ads
+**Ad Groups get labeled with:**
+- `BF_2025` - Black Friday 2025 campaign marker
+- `SD_DONE` - Processing complete marker (used to skip already-processed ad groups)
+
+**New Ads get labeled with:**
+- `SINGLES_DAY` - Singles Day themed ad
+- `THEMA_AD` - Themed ad marker
+
+**Existing Ads get labeled with:**
+- `THEMA_ORIGINAL` - Original ad marker
+
 ### Thema Ads Job Management
 - `POST /api/thema-ads/upload` - Upload CSV file (flexible format, see CSV Format below)
 - `POST /api/thema-ads/jobs/{job_id}/start` - Start processing job

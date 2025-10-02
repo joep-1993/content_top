@@ -31,6 +31,7 @@ class CachedData:
     labels: dict  # label_name -> resource_name
     existing_ads: dict  # ad_group_resource -> ExistingAd
     campaigns: dict  # campaign_name -> resource_name
+    ad_group_labels: dict = None  # ad_group_resource -> has_SD_DONE_label (bool)
 
 
 @dataclass

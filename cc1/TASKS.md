@@ -14,6 +14,7 @@ _Tasks currently being worked on_
 ## Completed
 _Finished tasks (move here when done)_
 
+- [x] Add SD_DONE label to processed ad groups and skip already-processed ad groups #claude-session:2025-10-02
 - [x] Optimize large CSV file upload performance (batch inserts, dynamic timeouts, progress feedback) #claude-session:2025-10-02
 - [x] Fix CSV encoding issues - support multiple encodings (UTF-8, Windows-1252, ISO-8859-1) #claude-session:2025-10-02
 - [x] Extend CSV upload file size limit from 10MB to 30MB (updated frontend validation) #claude-session:2025-10-02

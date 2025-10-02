@@ -132,6 +132,67 @@ async def prefetch_existing_ads_bulk(
     return await loop.run_in_executor(None, _fetch)
 
 
+@async_retry(max_attempts=3, delay=1.0)
+async def prefetch_ad_group_labels(
+    client: GoogleAdsClient,
+    customer_id: str,
+    ad_group_resources: List[str],
+    label_name: str = "SD_DONE"
+) -> Dict[str, bool]:
+    """Check which ad groups have a specific label. Returns {ad_group_resource: has_label}."""
+
+    def _fetch():
+        if not ad_group_resources:
+            return {}
+
+        ga_service = client.get_service("GoogleAdsService")
+        resources_str = ", ".join(f"'{r}'" for r in ad_group_resources)
+
+        query = f"""
+            SELECT
+                ad_group_label.ad_group,
+                ad_group_label.label
+            FROM ad_group_label
+            WHERE ad_group_label.ad_group IN ({resources_str})
+        """
+
+        ag_labels_map = {ag_res: False for ag_res in ad_group_resources}
+
+        try:
+            response = ga_service.search(customer_id=customer_id, query=query)
+
+            # First get the label resource for SD_DONE
+            label_query = f"""
+                SELECT label.resource_name, label.name
+                FROM label
+                WHERE label.name = '{label_name}'
+            """
+            sd_done_resource = None
+            try:
+                label_search = ga_service.search(customer_id=customer_id, query=label_query)
+                for row in label_search:
+                    sd_done_resource = row.label.resource_name
+                    break
+            except Exception:
+                pass
+
+            if sd_done_resource:
+                for row in response:
+                    if row.ad_group_label.label == sd_done_resource:
+                        ag_labels_map[row.ad_group_label.ad_group] = True
+
+            has_label_count = sum(1 for v in ag_labels_map.values() if v)
+            logger.info(f"Found {has_label_count} ad groups with {label_name} label")
+
+        except Exception as e:
+            logger.warning(f"Failed to check ad group labels: {e}")
+
+        return ag_labels_map
+
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _fetch)
+
+
 async def prefetch_customer_data(
     client: GoogleAdsClient,
     customer_id: str,
@@ -141,11 +202,12 @@ async def prefetch_customer_data(
 
     logger.info(f"Prefetching data for customer {customer_id} ({len(ad_group_resources)} ad groups)")
 
-    # Fetch labels and ads in parallel
+    # Fetch labels, ads, and ad group labels in parallel
     labels_task = prefetch_labels(client, customer_id)
     ads_task = prefetch_existing_ads_bulk(client, customer_id, ad_group_resources)
+    ag_labels_task = prefetch_ad_group_labels(client, customer_id, ad_group_resources, "SD_DONE")
 
-    labels, existing_ads = await asyncio.gather(labels_task, ads_task)
+    labels, existing_ads, ag_has_sd_done = await asyncio.gather(labels_task, ads_task, ag_labels_task)
 
     logger.info(
         f"Prefetch complete for {customer_id}: "
@@ -155,5 +217,6 @@ async def prefetch_customer_data(
     return CachedData(
         labels=labels,
         existing_ads=existing_ads,
-        campaigns={}  # Not needed for this use case
+        campaigns={},  # Not needed for this use case
+        ad_group_labels=ag_has_sd_done  # Add this field
     )
