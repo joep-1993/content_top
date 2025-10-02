@@ -265,8 +265,8 @@ async function refreshJobs() {
                     <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); showJobDetail(${job.id})">
                         View
                     </button>
-                    ${job.failed_ad_groups > 0 ? `
-                    <button class="btn btn-sm btn-warning" onclick="event.stopPropagation(); downloadFailedItems(${job.id})" title="Download failed items CSV">
+                    ${(job.failed_ad_groups > 0 || job.skipped_ad_groups > 0) ? `
+                    <button class="btn btn-sm btn-warning" onclick="event.stopPropagation(); downloadFailedItems(${job.id})" title="Download failed and skipped items CSV">
                         <i class="bi bi-download"></i> CSV
                     </button>
                     ` : ''}
@@ -568,7 +568,7 @@ async function deleteJob(jobId) {
     }
 }
 
-// Download failed items as CSV
+// Download failed and skipped items as CSV
 async function downloadFailedItems(jobId) {
     try {
         const response = await fetch(`/api/thema-ads/jobs/${jobId}/failed-items-csv`);
@@ -578,7 +578,7 @@ async function downloadFailedItems(jobId) {
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `job_${jobId}_failed_items.csv`;
+            a.download = `job_${jobId}_failed_and_skipped_items.csv`;
             document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(url);

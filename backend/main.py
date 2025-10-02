@@ -471,41 +471,53 @@ async def delete_job(job_id: int):
 
 @app.get("/api/thema-ads/jobs/{job_id}/failed-items-csv")
 async def download_failed_items(job_id: int):
-    """Download CSV of failed items for a job."""
+    """Download CSV of failed and skipped items for a job."""
     try:
         conn = get_db_connection()
         cur = conn.cursor()
 
-        # Get failed items
+        # Get failed and skipped items
         cur.execute("""
-            SELECT customer_id, campaign_id, campaign_name, ad_group_id, error_message
+            SELECT customer_id, campaign_id, campaign_name, ad_group_id, status, error_message
             FROM thema_ads_job_items
-            WHERE job_id = %s AND status = 'failed'
-            ORDER BY customer_id, ad_group_id
+            WHERE job_id = %s AND status IN ('failed', 'skipped')
+            ORDER BY status, customer_id, ad_group_id
         """, (job_id,))
 
-        failed_items = cur.fetchall()
+        items = cur.fetchall()
         cur.close()
         conn.close()
 
-        if not failed_items:
-            raise HTTPException(status_code=404, detail="No failed items found for this job")
+        if not items:
+            raise HTTPException(status_code=404, detail="No failed or skipped items found for this job")
 
         # Create CSV in memory
         output = io.StringIO()
         writer = csv.writer(output)
 
         # Write header
-        writer.writerow(['customer_id', 'campaign_id', 'campaign_name', 'ad_group_id', 'error_message'])
+        writer.writerow(['customer_id', 'campaign_id', 'campaign_name', 'ad_group_id', 'status', 'reason'])
 
         # Write data
-        for item in failed_items:
+        for item in items:
+            # Format reason based on status and error message
+            if item['status'] == 'skipped':
+                if item['error_message'] and 'Already processed' in item['error_message']:
+                    reason = "Ad group has 'SD_DONE' label (already processed)"
+                elif item['error_message'] and 'No existing ad' in item['error_message']:
+                    reason = "Ad group has 0 ads"
+                else:
+                    reason = item['error_message'] or 'Skipped'
+            else:
+                reason = item['error_message'] or 'Unknown error'
+
             writer.writerow([
                 item['customer_id'],
                 item['campaign_id'] or '',
                 item['campaign_name'] or '',
                 item['ad_group_id'],
-                item['error_message'] or ''
+                item['status'],
+                reason
             ])
 
         # Prepare response
@@ -514,7 +526,7 @@ async def download_failed_items(job_id: int):
             iter([output.getvalue()]),
             media_type="text/csv",
             headers={
-                "Content-Disposition": f"attachment; filename=job_{job_id}_failed_items.csv"
+                "Content-Disposition": f"attachment; filename=job_{job_id}_failed_and_skipped_items.csv"
             }
         )
 
