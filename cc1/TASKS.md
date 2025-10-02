@@ -4,6 +4,7 @@ _Active task tracking. Update when: starting work, completing tasks, finding blo
 ## Current Sprint
 _Active tasks for immediate work_
 
+- [ ] Re-upload CSV file with ad_group_name column included #priority:high #estimate:5m
 - [ ] Verify AI integration #priority:medium #estimate:15m
 - [ ] Customize for specific use case #priority:medium
 
@@ -13,6 +14,7 @@ _Tasks currently being worked on_
 ## Completed
 _Finished tasks (move here when done)_
 
+- [x] Fix Excel precision loss by using ad_group_name lookups (added ad_group_name column, resolve correct IDs from Google Ads API) #claude-session:2025-10-02
 - [x] Fix tab text visibility when selected (active tab text now blue instead of white-on-white) #claude-session:2025-10-02
 - [x] Label the 4 unlabeled ads created in initial run (verified all 4 ads already have SINGLES_DAY and THEMA_AD labels) #claude-session:2025-10-02
 - [x] Fix Auto-Discover button alignment (changed btn-success to btn-primary to match CSV upload button) #claude-session:2025-10-02

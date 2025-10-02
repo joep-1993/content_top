@@ -120,27 +120,38 @@ if not customer_id or not ad_group_id:
 customer_id = row['customer_id'].strip().replace('-', '')
 ```
 
-### Excel Scientific Notation in CSV
-- **Error**: `BAD_RESOURCE_ID` - "Requested entity was not found" when ad_group_id = "1,76256E+11" or "1.76256E+11"
-- **Cause**: Excel automatically converts large numbers to scientific notation when opening/saving CSV files
-- **Example**: `176256000000000` becomes `1.76256E+11` (English locale) or `1,76256E+11` (European locale)
-- **Impact**: All items fail with invalid resource IDs
-- **Solution**: Convert scientific notation back to full numbers during CSV parsing, handling both period and comma decimal separators
+### Excel Scientific Notation - Precision Loss Problem
+- **Error**: `BAD_RESOURCE_ID` or "No existing ad found" even though ads exist
+- **Root Cause**: Excel scientific notation stores **only 5-6 significant digits**, losing precision
+- **Example**:
+  - Original ID: `168066123456` (12 digits)
+  - Excel converts: `1.68066E+11` (only 6 significant digits!)
+  - Converted back: `168066000000` (last 6 digits become zeros)
+- **Impact**: Ad group IDs corrupted, lookups fail, all items marked as "no existing ad"
+- **Initial Solution (INSUFFICIENT)**: Convert scientific notation back
 ```python
 def convert_scientific_notation(value: str) -> str:
     if 'E' in value.upper():
-        try:
-            # Handle both comma and period decimal separators
-            value_normalized = value.replace(',', '.')
-            return str(int(float(value_normalized)))  # 1,76256E+11 → 176256000000000
-        except (ValueError, OverflowError):
-            return value
-    return value
-
-customer_id = convert_scientific_notation(row['customer_id'])
-ad_group_id = convert_scientific_notation(row['ad_group_id'])
+        value_normalized = value.replace(',', '.')
+        return str(int(float(value_normalized)))  # Still loses precision!
 ```
-- **Prevention**: Export CSV as "CSV UTF-8" or use "Text" format for ID columns in Excel
+- **Problem**: Precision already lost in Excel file (168066123456 → 168066000000)
+- **Real Solution**: Use `ad_group_name` instead of `ad_group_id` for lookups
+  1. Include `ad_group_name` column in CSV exports
+  2. Look up correct `ad_group_id` from Google Ads API using name
+  3. Use correct ID for all operations
+```python
+# Backend: Store ad_group_name from CSV
+item['ad_group_name'] = row.get('ad_group_name')
+
+# Processing: Resolve correct IDs from names
+async def _resolve_ad_group_ids(customer_id, inputs):
+    inputs_needing_lookup = [inp for inp in inputs if inp.ad_group_name]
+    query = f"SELECT ad_group.id, ad_group.name FROM ad_group WHERE ad_group.name IN ({names})"
+    name_to_id = {row.ad_group.name: str(row.ad_group.id) for row in response}
+    # Update inputs with correct IDs from Google Ads
+```
+- **Prevention**: Always export with `ad_group_name` column; CSV must include both ID and name
 
 ### CSV Encoding Issues
 - **Error**: `'utf-8' codec can't decode byte 0xe8 in position X: invalid continuation byte`

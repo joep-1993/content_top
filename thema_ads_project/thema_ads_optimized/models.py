@@ -11,6 +11,7 @@ class AdGroupInput:
     campaign_name: str
     campaign_id: str
     ad_group_id: str
+    ad_group_name: Optional[str] = None  # If provided, use for lookup instead of ID (Excel precision issue)
 
 
 @dataclass

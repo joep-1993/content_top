@@ -96,6 +96,72 @@ class ThemaAdsProcessor:
 
         return all_results
 
+    async def _resolve_ad_group_ids(
+        self,
+        customer_id: str,
+        inputs: List[AdGroupInput]
+    ) -> List[AdGroupInput]:
+        """Resolve ad_group_id from ad_group_name when name is provided.
+        Excel scientific notation corrupts IDs, so we look up correct IDs by name.
+        """
+        # Separate inputs that need lookup vs those that don't
+        inputs_needing_lookup = [inp for inp in inputs if inp.ad_group_name]
+        inputs_ready = [inp for inp in inputs if not inp.ad_group_name]
+
+        if not inputs_needing_lookup:
+            return inputs  # No lookups needed
+
+        def _lookup():
+            """Lookup ad group IDs by name in a single batched query."""
+            ga_service = self.client.get_service("GoogleAdsService")
+
+            # Build name filter
+            names = [inp.ad_group_name for inp in inputs_needing_lookup]
+            names_str = ", ".join(f"'{name}'" for name in set(names))
+
+            # Query ad groups by name
+            query = f"""
+                SELECT ad_group.id, ad_group.name
+                FROM ad_group
+                WHERE ad_group.name IN ({names_str})
+            """
+
+            try:
+                response = ga_service.search(customer_id=customer_id, query=query)
+                name_to_id = {row.ad_group.name: str(row.ad_group.id) for row in response}
+
+                logger.info(f"Resolved {len(name_to_id)} ad group IDs from names for customer {customer_id}")
+
+                # Update inputs with correct IDs
+                corrected_inputs = []
+                for inp in inputs_needing_lookup:
+                    if inp.ad_group_name in name_to_id:
+                        # Create new input with correct ID
+                        corrected_inp = AdGroupInput(
+                            customer_id=inp.customer_id,
+                            campaign_name=inp.campaign_name,
+                            campaign_id=inp.campaign_id,
+                            ad_group_id=name_to_id[inp.ad_group_name],
+                            ad_group_name=inp.ad_group_name
+                        )
+                        corrected_inputs.append(corrected_inp)
+                    else:
+                        logger.warning(f"Could not find ad group '{inp.ad_group_name}' for customer {customer_id}")
+                        corrected_inputs.append(inp)  # Use original (will likely fail)
+
+                return corrected_inputs
+
+            except Exception as e:
+                logger.error(f"Failed to resolve ad group names: {e}")
+                return inputs_needing_lookup  # Return original inputs
+
+        # Run lookup in executor
+        loop = asyncio.get_event_loop()
+        corrected_inputs = await loop.run_in_executor(None, _lookup)
+
+        # Combine corrected and ready inputs
+        return corrected_inputs + inputs_ready
+
     async def process_customer(
         self,
         customer_id: str,
@@ -106,11 +172,14 @@ class ThemaAdsProcessor:
         logger.info(f"Processing customer {customer_id}: {len(inputs)} ad groups")
 
         try:
+            # Resolve ad group names to correct IDs (Excel scientific notation corrupts IDs)
+            inputs_with_correct_ids = await self._resolve_ad_group_ids(customer_id, inputs)
+
             # Build ad group resource names
             ag_service = self.client.get_service("AdGroupService")
             ad_group_resources = [
                 ag_service.ad_group_path(customer_id, inp.ad_group_id)
-                for inp in inputs
+                for inp in inputs_with_correct_ids
             ]
 
             # Step 1: Prefetch all data (2-3 API calls)

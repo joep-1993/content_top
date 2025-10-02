@@ -521,6 +521,10 @@ async def upload_csv(file: UploadFile = File(...), background_tasks: BackgroundT
                 if 'campaign_name' in row and row['campaign_name'].strip():
                     item['campaign_name'] = row['campaign_name'].strip()
 
+                # Add optional ad_group_name if provided (better than ID due to Excel precision loss)
+                if 'ad_group_name' in row and row['ad_group_name'].strip():
+                    item['ad_group_name'] = row['ad_group_name'].strip()
+
                 input_data.append(item)
 
         logger.info(f"Parsed {len(input_data)} rows from CSV")

@@ -73,25 +73,25 @@ class ThemaAdsService:
             if input_data:
                 input_values = [
                     (job_id, item['customer_id'], item.get('campaign_id'),
-                     item.get('campaign_name'), item['ad_group_id'])
+                     item.get('campaign_name'), item['ad_group_id'], item.get('ad_group_name'))
                     for item in input_data
                 ]
 
                 cur.executemany("""
-                    INSERT INTO thema_ads_input_data (job_id, customer_id, campaign_id, campaign_name, ad_group_id)
-                    VALUES (%s, %s, %s, %s, %s)
+                    INSERT INTO thema_ads_input_data (job_id, customer_id, campaign_id, campaign_name, ad_group_id, ad_group_name)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                 """, input_values)
 
                 # Batch insert job items
                 job_item_values = [
                     (job_id, item['customer_id'], item.get('campaign_id'),
-                     item.get('campaign_name'), item['ad_group_id'], 'pending')
+                     item.get('campaign_name'), item['ad_group_id'], item.get('ad_group_name'), 'pending')
                     for item in input_data
                 ]
 
                 cur.executemany("""
-                    INSERT INTO thema_ads_job_items (job_id, customer_id, campaign_id, campaign_name, ad_group_id, status)
-                    VALUES (%s, %s, %s, %s, %s, %s)
+                    INSERT INTO thema_ads_job_items (job_id, customer_id, campaign_id, campaign_name, ad_group_id, ad_group_name, status)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """, job_item_values)
 
             conn.commit()
@@ -157,7 +157,7 @@ class ThemaAdsService:
 
         try:
             cur.execute("""
-                SELECT customer_id, campaign_id, campaign_name, ad_group_id
+                SELECT customer_id, campaign_id, campaign_name, ad_group_id, ad_group_name
                 FROM thema_ads_job_items
                 WHERE job_id = %s AND status = 'pending'
             """, (job_id,))
@@ -300,7 +300,8 @@ class ThemaAdsService:
                     customer_id=item['customer_id'],
                     campaign_name=campaign_name,
                     campaign_id=campaign_id,
-                    ad_group_id=item['ad_group_id']
+                    ad_group_id=item['ad_group_id'],
+                    ad_group_name=item.get('ad_group_name')
                 ))
 
             # Update job status
