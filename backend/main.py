@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import StreamingResponse
 import os
 import csv
 import io
@@ -428,6 +429,61 @@ async def delete_job(job_id: int):
         thema_ads_service.delete_job(job_id)
 
         return {"status": "deleted", "job_id": job_id}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/thema-ads/jobs/{job_id}/failed-items-csv")
+async def download_failed_items(job_id: int):
+    """Download CSV of failed items for a job."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # Get failed items
+        cur.execute("""
+            SELECT customer_id, campaign_id, campaign_name, ad_group_id, error_message
+            FROM thema_ads_job_items
+            WHERE job_id = %s AND status = 'failed'
+            ORDER BY customer_id, ad_group_id
+        """, (job_id,))
+
+        failed_items = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        if not failed_items:
+            raise HTTPException(status_code=404, detail="No failed items found for this job")
+
+        # Create CSV in memory
+        output = io.StringIO()
+        writer = csv.writer(output)
+
+        # Write header
+        writer.writerow(['customer_id', 'campaign_id', 'campaign_name', 'ad_group_id', 'error_message'])
+
+        # Write data
+        for item in failed_items:
+            writer.writerow([
+                item['customer_id'],
+                item['campaign_id'] or '',
+                item['campaign_name'] or '',
+                item['ad_group_id'],
+                item['error_message'] or ''
+            ])
+
+        # Prepare response
+        output.seek(0)
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": f"attachment; filename=job_{job_id}_failed_items.csv"
+            }
+        )
 
     except HTTPException:
         raise

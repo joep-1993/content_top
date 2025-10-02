@@ -259,6 +259,7 @@ python-dotenv==1.0.0      # Environment variable management
 - `POST /api/thema-ads/jobs/{job_id}/resume` - Resume paused/failed job
 - `GET /api/thema-ads/jobs/{job_id}` - Get job status & progress
 - `GET /api/thema-ads/jobs` - List all jobs (limit=20)
+- `GET /api/thema-ads/jobs/{job_id}/failed-items-csv` - Download failed items as CSV
 - `DELETE /api/thema-ads/jobs/{job_id}` - Delete job and all associated data (blocks running jobs)
 
 #### CSV Format
