@@ -153,6 +153,7 @@ CREATE TABLE thema_ads_jobs (
     processed_ad_groups INTEGER DEFAULT 0,
     successful_ad_groups INTEGER DEFAULT 0,
     failed_ad_groups INTEGER DEFAULT 0,
+    skipped_ad_groups INTEGER DEFAULT 0,
     input_file VARCHAR(255),
     started_at TIMESTAMP,
     completed_at TIMESTAMP,

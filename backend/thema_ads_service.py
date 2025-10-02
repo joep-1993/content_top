@@ -223,7 +223,7 @@ class ThemaAdsService:
                 UPDATE thema_ads_jobs
                 SET processed_ad_groups = (
                         SELECT COUNT(*) FROM thema_ads_job_items
-                        WHERE job_id = %s AND status IN ('completed', 'failed')
+                        WHERE job_id = %s AND status IN ('completed', 'failed', 'skipped')
                     ),
                     successful_ad_groups = (
                         SELECT COUNT(*) FROM thema_ads_job_items
@@ -233,9 +233,13 @@ class ThemaAdsService:
                         SELECT COUNT(*) FROM thema_ads_job_items
                         WHERE job_id = %s AND status = 'failed'
                     ),
+                    skipped_ad_groups = (
+                        SELECT COUNT(*) FROM thema_ads_job_items
+                        WHERE job_id = %s AND status = 'skipped'
+                    ),
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s
-            """, (job_id, job_id, job_id, job_id))
+            """, (job_id, job_id, job_id, job_id, job_id))
 
             conn.commit()
 
@@ -349,14 +353,21 @@ class ThemaAdsService:
 
                 # Update database with results
                 for result, inp in zip(results, customer_inputs):
-                    status = 'completed' if result.success else 'failed'
+                    # Determine status based on result
+                    if result.success and result.error and "Already processed" in result.error:
+                        status = 'skipped'
+                    elif result.success:
+                        status = 'completed'
+                    else:
+                        status = 'failed'
+
                     self.update_item_status(
                         job_id,
                         customer_id,
                         inp.ad_group_id,
                         status,
                         result.new_ad_resource if result.success else None,
-                        result.error if not result.success else None
+                        result.error
                     )
 
                 return results

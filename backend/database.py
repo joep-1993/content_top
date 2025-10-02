@@ -57,6 +57,7 @@ def init_db():
             processed_ad_groups INTEGER DEFAULT 0,
             successful_ad_groups INTEGER DEFAULT 0,
             failed_ad_groups INTEGER DEFAULT 0,
+            skipped_ad_groups INTEGER DEFAULT 0,
             input_file VARCHAR(255),
             started_at TIMESTAMP,
             completed_at TIMESTAMP,
@@ -64,6 +65,19 @@ def init_db():
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             error_message TEXT
         )
+    """)
+
+    # Add skipped_ad_groups column if it doesn't exist (migration)
+    cur.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name='thema_ads_jobs' AND column_name='skipped_ad_groups'
+            ) THEN
+                ALTER TABLE thema_ads_jobs ADD COLUMN skipped_ad_groups INTEGER DEFAULT 0;
+            END IF;
+        END $$;
     """)
 
     cur.execute("""

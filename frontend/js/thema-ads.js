@@ -330,6 +330,7 @@ async function updateJobStatus() {
         // Update statistics
         document.getElementById('totalItems').textContent = job.total_ad_groups;
         document.getElementById('successfulItems').textContent = job.successful_ad_groups;
+        document.getElementById('skippedItems').textContent = job.skipped_ad_groups || 0;
         document.getElementById('failedItems').textContent = job.failed_ad_groups;
 
         const pendingCount = (job.items_by_status?.pending || 0) +
