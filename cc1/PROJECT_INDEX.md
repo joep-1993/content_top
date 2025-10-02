@@ -284,7 +284,13 @@ Frontend has two tabs:
 - Customer Accounts: Name starts with "Beslist.nl -"
 - Campaigns: Name starts with "HS/" AND status = ENABLED
 - Ad Groups: Status = ENABLED AND does NOT have SD_DONE label
+- Optional limit parameter (recommended: 100-1000 for testing)
 - Returns discovered ad groups and automatically starts processing
+
+**Performance:**
+- Batched label checking: ~30 API calls for 146k ad groups (vs 146k individual calls)
+- Batch size: 5,000 ad groups per query
+- Discovery time: ~1-2 minutes for full account scan
 
 #### CSV Format
 **Minimum columns** (campaign info fetched at runtime):

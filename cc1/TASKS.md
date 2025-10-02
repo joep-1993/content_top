@@ -14,6 +14,8 @@ _Tasks currently being worked on_
 ## Completed
 _Finished tasks (move here when done)_
 
+- [x] Optimize auto-discover with batched label checking (5000x faster: 30 API calls instead of 146k) #claude-session:2025-10-02
+- [x] Add limit parameter to auto-discover (prevents overwhelming system, allows testing) #claude-session:2025-10-02
 - [x] Add auto-discover mode to find ad groups from Google Ads (MCC account, Beslist.nl accounts, HS/ campaigns, no SD_DONE label) #claude-session:2025-10-02
 - [x] Increase batch size from 1,000 to 5,000 for 5x performance improvement on large customers #claude-session:2025-10-02
 - [x] Fix timezone display issue (UTC timestamps now properly converted to local timezone) #claude-session:2025-10-02

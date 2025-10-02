@@ -220,6 +220,7 @@ async function uploadCSV() {
 async function discoverAdGroups() {
     const discoverBtn = document.getElementById('discoverBtn');
     const resultDiv = document.getElementById('discoverResult');
+    const limitInput = document.getElementById('discoverLimit');
 
     discoverBtn.disabled = true;
     discoverBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Discovering...';
@@ -229,7 +230,14 @@ async function discoverAdGroups() {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutes timeout
 
-        const response = await fetch('/api/thema-ads/discover', {
+        // Build URL with optional limit parameter
+        let url = '/api/thema-ads/discover';
+        const limit = limitInput.value ? parseInt(limitInput.value) : null;
+        if (limit) {
+            url += `?limit=${limit}`;
+        }
+
+        const response = await fetch(url, {
             method: 'POST',
             signal: controller.signal
         });

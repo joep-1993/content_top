@@ -427,6 +427,33 @@ else:
 # CSV includes: customer_id, ad_group_id, status, reason
 ```
 
+### Batched Discovery vs Per-Item Queries
+- **Problem**: Checking properties for thousands of items with individual queries
+- **Anti-pattern**: 1 API call per item to check a property (e.g., checking if 146k ad groups have a label = 146k API calls)
+- **Solution**: Batch fetch all items, batch fetch all properties, filter in memory
+```python
+# ❌ BAD: 1 API call per ad group (146k calls!)
+for ad_group in ad_groups:
+    query = f"SELECT ... WHERE ad_group = '{ad_group.resource}' AND label = 'SD_DONE'"
+    has_label = len(list(service.search(query))) > 0
+
+# ✅ GOOD: Batch queries (2-3 calls total)
+# 1. Get all ad groups (1 call)
+ad_groups = list(service.search("SELECT ad_group FROM ad_group WHERE ..."))
+
+# 2. Get all ad groups WITH the label (1-2 batched calls for 146k items)
+BATCH_SIZE = 5000
+for i in range(0, len(ad_groups), BATCH_SIZE):
+    batch = ad_groups[i:i + BATCH_SIZE]
+    resources_str = ", ".join(f"'{ag}'" for ag in batch)
+    query = f"SELECT ad_group_label.ad_group WHERE ad_group IN ({resources_str}) AND label = 'SD_DONE'"
+    # Process batch...
+
+# 3. Filter in memory
+processable_ad_groups = [ag for ag in ad_groups if ag not in labeled_set]
+```
+- **Performance**: Reduces 146k API calls to ~30 calls (5000x improvement)
+
 ### UTC Timestamps with JavaScript Timezone Conversion
 - **Error**: Timestamps display 2 hours off (database shows 17:10 but user sees 17:10 instead of 19:10)
 - **Cause**: PostgreSQL stores timestamps in UTC without timezone indicator, JavaScript interprets as local time
