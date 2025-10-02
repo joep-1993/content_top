@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+postgres_data/
+
+# CC1 (keep structure but ignore sensitive content)
+cc1/.tmp/
+cc1/*.log
+
+# Secrets and sensitive data
+thema_ads_project/thema_ads
+
+# Large data files
+*.xlsx
+*.xls

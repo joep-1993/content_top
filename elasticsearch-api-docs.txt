@@ -1,0 +1,334 @@
+# Beslist Elasticsearch API Documentation
+
+## Cluster Information
+- **Endpoint**: `https://elasticsearch-job-cluster-eck.beslist.nl/`
+- **Version**: 8.14.3
+- **Deployment**: ECK (Elastic Cloud on Kubernetes)
+
+## Index Naming Convention
+```
+product_search_v5_<MAINCATID>
+```
+Example: `product_search_v5_32000`
+
+## Key Fields for Product Search
+
+### Core Product Fields
+- **`id`** (keyword): Product identifier
+- **`title`** (text): Product title with full-text search
+  - `title.raw`: Exact match version
+  - `title.bigram`: Bigram analyzer for better matching
+- **`description`** (text): Product description with full-text search
+- **`brandName`** (keyword): Exact brand matching
+
+### Pricing Fields
+- **`minPrice`** (float): Lowest price across all shops
+- **`maxPrice`** (float): Highest price across all shops
+- **`minPriceBe`** (float): Lowest price in Belgium
+- **`allShopsLowestPriceNl`** (float): Lowest price in Netherlands
+- **`allShopsLowestPriceBe`** (float): Lowest price in Belgium
+
+### Popularity Metrics
+- **`popularity`** (float): Main popularity score for Netherlands
+- **`popularityBe`** (float): Popularity score for Belgium
+- **`alternativePopularity`** (float): Alternative popularity metric
+- **`alternativePopularityBe`** (float): Alternative popularity for Belgium
+
+### Shop Information
+- **`shopCountNl`** (short): Number of Dutch shops selling this product
+- **`shopCountBe`** (short): Number of Belgian shops selling this product
+- **`shops`** (nested): Detailed shop information including:
+  - `shops.id`: Shop identifier
+  - `shops.country`: Country code (nl/be)
+  - `shops.regularPrice.price`: Regular price at this shop
+  - `shops.salePrice.price`: Sale price if available
+  - `shops.condition`: Product condition (new/used/refurbished)
+
+### Categories (Nested)
+- **`categories`** (nested): Product categories
+  - `categories.id`: Category ID
+  - `categories.name`: Category name
+  - `categories.depth`: Category depth in hierarchy
+  - `categories.parentId`: Parent category ID
+- **`mainCategoryId`** (integer): Primary category ID
+- **`deepestCategoryId`** (integer): Most specific category ID
+
+### Product Attributes (Columns)
+- **`columns`** (nested): Product attributes/specifications
+  - `columns.id`: Attribute ID
+  - `columns.name`: Attribute name (e.g., "Color", "Size")
+  - `columns.values.columnValue`: Attribute value
+  - `columns.values.detailValue`: Detailed value
+
+### Search-Optimized Fields
+- **`indexedCategoryField`** (text): Optimized for category search
+- **`indexedColumnField`** (text): Optimized for attribute search
+- **`indexedColumnFieldHighPriority`** (text): High-priority attributes
+
+## Example Queries
+
+### 1. Find Top 10,000 Most Popular Sneakers in Netherlands
+
+```json
+POST /product_search_v5_32000/_search
+{
+  "size": 10000,
+  "query": {
+    "bool": {
+      "filter": [
+        {
+          "term": {
+            "valid": true
+          }
+        },
+        {
+          "range": {
+            "shopCountNl": {
+              "gt": 0
+            }
+          }
+        }
+      ],
+      "should": [
+        {
+          "match": {
+            "title": "sneakers"
+          }
+        },
+        {
+          "match": {
+            "indexedCategoryField": "sneakers"
+          }
+        }
+      ],
+      "minimum_should_match": 1
+    }
+  },
+  "sort": [
+    {
+      "popularity": {
+        "order": "desc"
+      }
+    }
+  ],
+  "_source": [
+    "title",
+    "brandName",
+    "minPrice",
+    "maxPrice",
+    "popularity",
+    "shopCountNl",
+    "categories.name"
+  ]
+}
+```
+
+### 2. Search for Nike Sneakers Under €150
+
+```json
+POST /product_search_v5_*/_search
+{
+  "size": 100,
+  "query": {
+    "bool": {
+      "must": [
+        {
+          "match": {
+            "title": "sneakers"
+          }
+        }
+      ],
+      "filter": [
+        {
+          "term": {
+            "brandName": "Nike"
+          }
+        },
+        {
+          "range": {
+            "minPrice": {
+              "lte": 150
+            }
+          }
+        },
+        {
+          "term": {
+            "valid": true
+          }
+        }
+      ]
+    }
+  },
+  "sort": [
+    {
+      "popularity": {
+        "order": "desc"
+      }
+    }
+  ],
+  "_source": [
+    "title",
+    "brandName",
+    "minPrice",
+    "popularity"
+  ]
+}
+```
+
+### 3. Aggregation: Top Brands in Category
+
+```json
+POST /product_search_v5_32000/_search
+{
+  "size": 0,
+  "query": {
+    "match": {
+      "indexedCategoryField": "sneakers"
+    }
+  },
+  "aggs": {
+    "top_brands": {
+      "terms": {
+        "field": "brandName",
+        "size": 20
+      },
+      "aggs": {
+        "avg_price": {
+          "avg": {
+            "field": "minPrice"
+          }
+        },
+        "avg_popularity": {
+          "avg": {
+            "field": "popularity"
+          }
+        }
+      }
+    },
+    "price_ranges": {
+      "range": {
+        "field": "minPrice",
+        "ranges": [
+          { "key": "budget", "to": 50 },
+          { "key": "mid", "from": 50, "to": 150 },
+          { "key": "premium", "from": 150 }
+        ]
+      }
+    }
+  }
+}
+```
+
+### 4. Find Products with Free Delivery
+
+```json
+POST /product_search_v5_*/_search
+{
+  "size": 50,
+  "query": {
+    "bool": {
+      "filter": [
+        {
+          "nested": {
+            "path": "shops",
+            "query": {
+              "bool": {
+                "filter": [
+                  {
+                    "term": {
+                      "shops.country": "nl"
+                    }
+                  },
+                  {
+                    "term": {
+                      "shops.deliveryCost": 0
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "sort": [
+    {
+      "popularity": {
+        "order": "desc"
+      }
+    }
+  ]
+}
+```
+
+### 5. Products Available in Multiple Shops
+
+```json
+POST /product_search_v5_*/_search
+{
+  "size": 100,
+  "query": {
+    "bool": {
+      "filter": [
+        {
+          "range": {
+            "shopCountNl": {
+              "gte": 5
+            }
+          }
+        },
+        {
+          "match": {
+            "indexedCategoryField": "sneakers"
+          }
+        }
+      ]
+    }
+  },
+  "sort": [
+    {
+      "shopCountNl": {
+        "order": "desc"
+      }
+    }
+  ],
+  "_source": [
+    "title",
+    "shopCountNl",
+    "minPrice",
+    "maxPrice"
+  ]
+}
+```
+
+## Special Fields Notes
+
+### Bestseller Fields
+- `bestseller.google`: Google bestseller status
+- `bestseller.googleTop100`: In Google's top 100
+
+### Image Embeddings
+- `images.embeddingOpenAiClipMultimodal`: 512-dimensional vector for image similarity search
+
+### Performance Labels
+- `productScoreLabel`: Product quality score
+- `eanScoreLabel`: EAN coverage score
+- `brandRelativeDemandLabel`: Brand demand indicator
+
+## Tips for Queries
+
+1. **Use filters instead of queries for non-text fields** (prices, counts, booleans)
+2. **Sort by `popularity` for relevance** - this is the main ranking metric
+3. **Check `valid: true`** to ensure products are active
+4. **Use `shopCountNl > 0`** to ensure availability in Netherlands
+5. **The `_source` parameter** limits returned fields for better performance
+6. **Nested queries** are required for shops and categories data
+
+## Category IDs (Main Categories)
+Common main category IDs:
+- 32000: Likely fashion/shoes category
+- 36000: Another major category
+- 10: General/mixed products
+
+Note: Exact category mappings would need to be obtained from Beslist documentation.

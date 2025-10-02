@@ -1,0 +1,1163 @@
+{
+  "name": "kopteksten_uitrol",
+  "nodes": [
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// n8n Code node: vervangt alle enkele quotes in $json.message.content door dubbele enkele quotes\nconst original = $json.message?.content || '';\nconst sanitized = original.replace(/'/g, \"''\")\n    .replace(/&amp;/g, '&')\n    .replace(/&quot;/g, '\"')\n    .replace(/&apos;/g, \"'\")\n    .replace(/&#039;/g, \"'\")\n    .replace(/&lt;/g, '<')\n    .replace(/&gt;/g, '>')\n    .replace(/&nbsp;/g, ' ')\n    .replace(/&euro;/g, '€')\n    .replace(/&copy;/g, '©')\n    .replace(/&trade;/g, '™');\n\nreturn {\n  json: {\n    ...$json,\n    sanitized_content: sanitized\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1184,
+        2875
+      ],
+      "id": "e73514d3-029f-4661-8f2f-fe9211962759",
+      "name": "escape_apostrophe",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const url = ($json.url || \"\").split(\"?\")[0];\n\nreturn {\n  json: {\n    url\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3760,
+        2800
+      ],
+      "id": "6b55d63d-4b86-46cb-9b2f-99e7d9e495aa",
+      "name": "clean_url",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "bot-n8nbram"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -3320,
+        2800
+      ],
+      "id": "1307dacd-5448-4b3b-a1e9-e8d93d8368b7",
+      "name": "get_url",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "bd8c2461-7a58-4422-9c77-97f4f7b59b25",
+              "name": "url",
+              "value": "={{ $('clean_url').item.json.url }}",
+              "type": "string"
+            },
+            {
+              "id": "78eb279c-fde0-42f3-a33b-84e0a7399141",
+              "name": "h1",
+              "value": "={{ $('get_content2').item.json.h1_title }}",
+              "type": "string"
+            },
+            {
+              "id": "eb608d67-67ac-47e4-bdba-7bc219dba957",
+              "name": "message.content",
+              "value": "={{ $json.message.content }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1404,
+        2775
+      ],
+      "id": "92122d9b-99bb-4855-8d27-cf840d5c972e",
+      "name": "set_fields",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO pa.content_urls_joep (url, \"content\")\nVALUES('{{ $json.url }}', '{{ $json.sanitized_content }}'); \n\n",
+        "options": {
+          "queryBatching": "independently"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -744,
+        3175
+      ],
+      "id": "0a446788-19ce-4125-9da1-81d335f896c8",
+      "name": "write_result",
+      "credentials": {
+        "postgres": {
+          "id": "vN1gzct2yLh0E1pi",
+          "name": "Postgres account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "eb1e019a-908b-49cb-8347-b5ad0b2a13a5",
+              "name": "=promptWriteText",
+              "value": "=Opdracht\nEen prijsbewuste consumenten landt op een pagina na het zoeken in Google.Op de pagina staan veel producten waaruit hij moet kiezen. Zie de lijst met de 40 populairste producten hieronder.\nSchrijf een korte tekst (max. 100 woorden) met als doel om de bezoeker te helpen de juiste keuze te maken.\n- Geef concreet advies: noem bijvoorbeeld verschillen in functies, eigenschappen of gebruiksscenario’s \n- Vermijd het noemen van prijzen.\n- Gebruik waar relevant, klikbare links naar producten en gebruik hierbij HTML-links met de tag <a href=\"url\"> en als linktekst de Title. Herschrijf de Title naar een goedlopende titel zonder gebruik te maken van \"-\". Gebruik alleen \"urls\" die hieronder in deze lijst voorkomen en negeer urls met een lege waarde. \n\nHieronder de context:\nZoekwoord in Google: {{ $json.h1_title }}\n\nDe 30 populairste producten met titel, prijs en de bijbehorede link:\n{{ $('get_content2').item.json.products\n  .map((item, index) => \n    `Product ${index + 1}\nTitle: ${item.title}\nPrice: ${item.price}\nUrl:  ${item.url}\nContent: ${item.listviewContent}\n`\n  )\n  .join('\\n')\n}}\n\n",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -2000,
+        2775
+      ],
+      "id": "998ebb8c-a698-4014-b0a3-59934127a687",
+      "name": "create_prompt",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cb16710e-c3a3-4af1-9bc2-4e2b935fb700",
+              "name": "url",
+              "value": "={{ $json.url }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -3540,
+        2800
+      ],
+      "id": "7cecf777-d309-4494-99be-127487e143d1",
+      "name": "set_field",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "o4-mini",
+          "mode": "list",
+          "cachedResultName": "O4-MINI"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={{ $json.promptWriteText }}"
+            },
+            {
+              "content": "Je bent een online voor beslist.nl met als doel om de bezoeker te helpen in zijn buyer journey.\n- Spreek de lezer aan met “je,” in een toegankelijke, optimistische toon.\n- Noem nooit prijzen.\n- Focus op advies dat écht helpt bij het maken van een keuze (bv. voordelen, verschillen, specifieke kenmerken).\n- als je linkt gebruikt, gebruik de tag <a href> en kies dan de juiste url uit de lijst van meegeleverde producten. Maak nooit zelf een andere url en negeer urls met waarde [empty]\n- als je een link maakt, zorg dat de linktekst verwijst naar het correcte url van het product, maar gebruik geen leesteksten en maak de linktekst niet te lang. \n- We moeten voorkomen dat de link tekst niet overeenkomt met de url.\n- Gebruik nooit andere URLs dan degene die voorkomen in de lijst van producten.",
+              "role": "system"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        -1780,
+        2775
+      ],
+      "id": "d2c8b8d4-bfe1-4d46-9537-dc3d6feaade2",
+      "name": "OpenAI",
+      "retryOnFail": true,
+      "credentials": {
+        "openAiApi": {
+          "id": "kno0bSOaIGRLaJmG",
+          "name": "OpenAi account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "batchSize": 10,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -3980,
+        3000
+      ],
+      "id": "94d7adf6-d230-43ff-8a7f-baf5452ccdc6",
+      "name": "Loop Over Items1",
+      "executeOnce": false,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "extractHtmlContent",
+        "extractionValues": {
+          "values": [
+            {
+              "key": "h1_title",
+              "cssSelector": "h1.productsTitle--tHP5S",
+              "returnValue": "html"
+            },
+            {
+              "key": "content",
+              "cssSelector": "div.product--WiTVr",
+              "returnValue": "html",
+              "returnArray": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.html",
+      "typeVersion": 1.2,
+      "position": [
+        -2660,
+        2975
+      ],
+      "id": "dcf93b39-3a3a-41c2-b14f-d72e007ab8b7",
+      "name": "get_html1",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const h1_title = $json.h1_title || \"No Title Found\";\n\n// Normaliseer naar array + neem max 30 containers\nlet containers = Array.isArray($json.content) ? $json.content : [$json.content];\ncontainers = containers.slice(0, 70);\n\n// Kleine helper om onzin-URLs te skippen\nconst isValidUrl = (u) => {\n  if (!u || typeof u !== \"string\") return false;\n  const s = u.trim().toLowerCase();\n  if (!s || s === \"#\" || s.startsWith(\"javascript:\")) return false;\n  // laat zowel absolute als relative urls door\n  return true;\n};\n\nconst products = [];\n\nfor (let html of containers) {\n  // Sommige items kunnen array-wrappers hebben\n  if (Array.isArray(html)) html = html[0] || \"\";\n  if (typeof html !== \"string\") html = String(html || \"\");\n\n  // Titel\n  //const titleMatch = html.match(/<h2 class=\"product_title--eQD3J\\.\">([^<]+)<\\/h2>/);\n  const titleMatch = html.match(/<h2 class=\"product_title--eQD3J.\">([^<]+)<\\/h2>/);\n  const title = titleMatch ? titleMatch[1].trim() : \"No Title\";\n\n  // Content\n  const contentMatch = html.match(/<div class=\"productInfo__description--S1odY.*?\">(.*?)<\\/div>/s);\n  const listviewContent = contentMatch ? contentMatch[1].trim() : \"\";\n\n  // URL\n  const linkRegex = /<a[^>]*?href=\"([^\"]+)\"[^>]*?>/i;\n  const linkMatch = html.match(linkRegex);\n  const url = linkMatch ? linkMatch[1].trim() : \"\";\n\n  // Alleen pushen als én url én content aanwezig/valide zijn\n  if (isValidUrl(url) && listviewContent) {\n    products.push({ title, url, listviewContent });\n  }\n}\n\nreturn {\n  json: {\n    h1_title,\n    products\n  }\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2440,
+        2975
+      ],
+      "id": "9f5e1db3-39a5-4e48-a67c-13844ce8adea",
+      "name": "get_content1",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ccac7690-dfd9-4636-9bfd-5a880b3a04fb",
+              "leftValue": "={{ $json.data }}",
+              "rightValue": "FacetValueV2",
+              "operator": {
+                "type": "string",
+                "operation": "regex"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -2880,
+        2875
+      ],
+      "id": "4537e547-b1ae-4804-8800-7df7ed1b0b76",
+      "name": "groeperen?",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "5701d779-2936-4477-b98d-e1cba3cf582d",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 200,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -3100,
+        2875
+      ],
+      "id": "c8acad96-2407-45a0-ad36-214736397d99",
+      "name": "statuscode_ok?",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "eb1e019a-908b-49cb-8347-b5ad0b2a13a5",
+              "name": "=promptWriteText",
+              "value": "=Opdracht\nEen prijsbewuste consumenten landt op een pagina na het zoeken in Google.Op de pagina staan veel producten waaruit hij moet kiezen. Zie de lijst met de 40 populairste producten hieronder.\nSchrijf een korte tekst (max. 100 woorden) met als doel om de bezoeker te helpen de juiste keuze te maken.\n- Geef concreet advies: noem bijvoorbeeld verschillen in functies, eigenschappen of gebruiksscenario’s \n- Vermijd het noemen van prijzen.\n- Gebruik waar relevant, klikbare links naar producten en gebruik hierbij HTML-links met de tag <a href=\"url\"> en als linktekst de Title. Herschrijf de Title naar een goedlopende titel zonder gebruik te maken van \"-\". Gebruik alleen \"urls\" die hieronder in deze lijst voorkomen en negeer urls met een lege waarde. \n\nHieronder de context:\nZoekwoord in Google: {{ $json.h1_title }}\n\nDe 30 populairste producten met titel, prijs en de bijbehorede link:\n{{ $('get_content1').item.json.products\n  .map((item, index) => \n    `Product ${index + 1}\nTitle: ${item.title}\nPrice: ${item.price}\nUrl:  ${item.url}\nContent: ${item.listviewContent}\n`\n  )\n  .join('\\n')\n}}\n\n",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -2000,
+        2975
+      ],
+      "id": "372db577-f623-4826-a294-14f715d78d70",
+      "name": "create_prompt1",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const h1_title = $json.h1_title || \"No Title Found\";\n\n// 'content' kan een array of string zijn → normaliseren + max 30\nlet containers = Array.isArray($json.content) ? $json.content : [$json.content];\ncontainers = containers.slice(0, 70);\n\nconst isValidUrl = (u) => {\n  if (!u || typeof u !== \"string\") return false;\n  const s = u.trim();\n  if (!s || s === \"#\" || s.toLowerCase().startsWith(\"javascript:\")) return false;\n  return true; // zowel absolute als relatieve URLs ok\n};\n\nconst products = [];\n\nfor (let html of containers) {\n  if (Array.isArray(html)) html = html[0] || \"\";\n  if (typeof html !== \"string\") html = String(html || \"\");\n\n  // Titel (punt in class escapen)\n  const titleMatch = html.match(/<h2 class=\"product_title--eQD3J.\">([^<]+)<\\/h2>/);\n  const title = titleMatch ? titleMatch[1].trim() : \"No Title\";\n\n  // Content\n  const contentMatch = html.match(/<div class=\"productInfo__description--S1odY.*?\">(.*?)<\\/div>/s);\n  const listviewContent = contentMatch ? contentMatch[1].trim() : \"\";\n\n  // URL (robuster dan label+href volgorde)\n  const linkMatch = html.match(/<a[^>]*href=\"([^\"]+)\"[^>]*>/i);\n  const url = linkMatch ? linkMatch[1].trim() : \"\";\n\n  // Alleen opnemen als beide aanwezig/valide zijn\n  if (isValidUrl(url) && listviewContent) {\n    products.push({ title, url, listviewContent });\n  }\n}\n\nreturn {\n  json: {\n    h1_title,\n    products\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2440,
+        2775
+      ],
+      "id": "cb25d456-721d-49d8-a696-7dace2c014ea",
+      "name": "get_content2",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "extractHtmlContent",
+        "extractionValues": {
+          "values": [
+            {
+              "key": "h1_title",
+              "cssSelector": "h1.productsTitle--tHP5S",
+              "returnValue": "html"
+            },
+            {
+              "key": "content",
+              "cssSelector": "div.product--WiTVr",
+              "returnValue": "html",
+              "returnArray": true
+            },
+            {
+              "key": "listview",
+              "cssSelector": "div.productInfo__description--S1odY",
+              "returnValue": "html",
+              "returnArray": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.html",
+      "typeVersion": 1.2,
+      "position": [
+        -2660,
+        2775
+      ],
+      "id": "dc31f3cc-e1c3-44fc-8f9c-d9bbc727fb1e",
+      "name": "get_html2",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "bd8c2461-7a58-4422-9c77-97f4f7b59b25",
+              "name": "url",
+              "value": "={{ $('clean_url').item.json.url }}",
+              "type": "string"
+            },
+            {
+              "id": "78eb279c-fde0-42f3-a33b-84e0a7399141",
+              "name": "h1",
+              "value": "={{ $('get_content1').item.json.h1_title }}",
+              "type": "string"
+            },
+            {
+              "id": "eb608d67-67ac-47e4-bdba-7bc219dba957",
+              "name": "message.content",
+              "value": "={{ $json.message.content }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1404,
+        2975
+      ],
+      "id": "e48cbe12-06db-4673-96c4-1c27c51e90b7",
+      "name": "set_fields2",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "o4-mini",
+          "mode": "list",
+          "cachedResultName": "O4-MINI"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={{ $json.promptWriteText }}"
+            },
+            {
+              "content": "Je bent een online voor beslist.nl met als doel om de bezoeker te helpen in zijn buyer journey.\n- Spreek de lezer aan met “je,” in een toegankelijke, optimistische toon.\n- Noem nooit prijzen.\n- Focus op advies dat écht helpt bij het maken van een keuze (bv. voordelen, verschillen, specifieke kenmerken).\n- als je linkt gebruikt, gebruik de tag <a href> en kies dan de juiste url uit de lijst van meegeleverde producten. Maak nooit zelf een andere url en negeer urls met waarde [empty]\n- als je een link maakt, zorg dat de linktekst verwijst naar het correcte url van het product, maar gebruik geen leesteksten en maak de linktekst niet te lang. \n- We moeten voorkomen dat de link tekst niet overeenkomt met de url.\n- Gebruik nooit andere URLs dan degene die voorkomen in de lijst van producten.",
+              "role": "system"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        -1780,
+        2975
+      ],
+      "id": "48527206-b16a-48c2-9a72-3012f42a260b",
+      "name": "OpenAI2",
+      "retryOnFail": true,
+      "credentials": {
+        "openAiApi": {
+          "id": "kno0bSOaIGRLaJmG",
+          "name": "OpenAi account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Vandaag\nconst now = new Date();\nconst yyyy = now.getFullYear();\nconst mm = String(now.getMonth() + 1).padStart(2, '0');\nconst dd = String(now.getDate()).padStart(2, '0');\nconst today = `${yyyy}${mm}${dd}`;\n\n// 30 dagen geleden\nconst nowMin30 = new Date();\nnowMin30.setDate(nowMin30.getDate() - 14);\nconst yyyy30 = nowMin30.getFullYear();\nconst mm30 = String(nowMin30.getMonth() + 1).padStart(2, '0');\nconst dd30 = String(nowMin30.getDate()).padStart(2, '0');\nconst todaymin30 = `${yyyy30}${mm30}${dd30}`;\n\n// Final output\nreturn [{\n  json: {\n    date_to: today,\n    date_from: todaymin30  \n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4420,
+        3000
+      ],
+      "id": "8613ddf7-dec5-45be-9e5d-f6d228949ef3",
+      "name": "get_sql_input"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "CREATE TABLE IF NOT EXISTS pa.jvs_seo_werkvoorraad_kopteksten_check (\n  url TEXT\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -4640,
+        3000
+      ],
+      "id": "36e42bd2-65da-43a8-8258-fbf292789caa",
+      "name": "create_table",
+      "credentials": {
+        "postgres": {
+          "id": "vN1gzct2yLh0E1pi",
+          "name": "Postgres account"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "url": "https://api.ipify.org?format=json",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4860,
+        3000
+      ],
+      "id": "5a10777a-d492-4963-9f2d-55c317fb8488",
+      "name": "HTTP Request4",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "select": "user",
+        "user": {
+          "__rl": true,
+          "value": "U08QP6PTAP3",
+          "mode": "list",
+          "cachedResultName": "j.schagen"
+        },
+        "text": "Hoi Joep, er zijn 10.000 nieuwe kopteksten gecreëerd en weggeschreven in pa.jvs_content_urls_new :champagne:",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        -3760,
+        2200
+      ],
+      "id": "76e663c3-7687-4373-b44c-0a285e8080b8",
+      "name": "Slack",
+      "webhookId": "baa6d3e1-03e0-4ff9-b98c-8699509e46f2",
+      "executeOnce": true,
+      "credentials": {
+        "slackApi": {
+          "id": "D9apUh68xl9AwulU",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO pa.jvs_seo_werkvoorraad_kopteksten_check (url)\nVALUES ('{{$json.url}}')",
+        "options": {
+          "queryBatching": "independently"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -3760,
+        2600
+      ],
+      "id": "d59384fc-5774-447b-8f23-616ef160578e",
+      "name": "write_check",
+      "credentials": {
+        "postgres": {
+          "id": "vN1gzct2yLh0E1pi",
+          "name": "Postgres account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE pa.jvs_seo_werkvoorraad\nSET kopteksten = 1\nWHERE url = '{{ $json.url }}';",
+        "options": {
+          "queryBatching": "independently"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -3760,
+        2400
+      ],
+      "id": "1c1c31ca-ecd6-4e1a-9f7e-30e7a14b52f7",
+      "name": "write_werkvoorraad",
+      "credentials": {
+        "postgres": {
+          "id": "vN1gzct2yLh0E1pi",
+          "name": "Postgres account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * from pa.jvs_seo_werkvoorraad \nwhere url not in (SELECT url from pa.jvs_seo_werkvoorraad_kopteksten_check)\nlimit 10000",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -4200,
+        3000
+      ],
+      "id": "8c81d898-e330-4b6e-9337-0873192060c8",
+      "name": "get_url's",
+      "credentials": {
+        "postgres": {
+          "id": "vN1gzct2yLh0E1pi",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c3799990-5448-41c1-be52-7228886edbc1",
+              "leftValue": "={{ $json.sanitized_content }}",
+              "rightValue": "<a href=\"/p/",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -964,
+        2875
+      ],
+      "id": "bbd02788-994c-449c-bad5-b9c045784c68",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "delete from jvs_seo_werkvoorraad_kopteksten_check where url = '{{$json.url}}'",
+        "options": {
+          "queryBatching": "independently"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -744,
+        2950
+      ],
+      "id": "2b976a4e-6717-484f-abdb-a993ff7470f0",
+      "name": "remove-from_check",
+      "credentials": {
+        "postgres": {
+          "id": "vN1gzct2yLh0E1pi",
+          "name": "Postgres account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "adf983ec-6e98-41a7-a245-3e348f7f7b3a",
+              "leftValue": "={{$json.products.length}}",
+              "rightValue": "=0",
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -2220,
+        2975
+      ],
+      "id": "52ce96ea-740f-4f11-bb46-bb314157f5ad",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "bab7b89c-79a1-4201-8581-dca5bcb329f1",
+              "leftValue": "={{$json.products.length}}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -2220,
+        2775
+      ],
+      "id": "0cd44fba-d241-4b7c-91e4-6635250cbac9",
+      "name": "If2"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 10
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -5420,
+        3460
+      ],
+      "id": "028a2660-abaa-4bd3-a0ee-2d15a22479bc",
+      "name": "Schedule Trigger"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "escape_apostrophe": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "clean_url": {
+      "main": [
+        [
+          {
+            "node": "set_field",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_url": {
+      "main": [
+        [
+          {
+            "node": "statuscode_ok?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "set_fields": {
+      "main": [
+        [
+          {
+            "node": "escape_apostrophe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "write_result": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "create_prompt": {
+      "main": [
+        [
+          {
+            "node": "OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "set_field": {
+      "main": [
+        [
+          {
+            "node": "get_url",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI": {
+      "main": [
+        [
+          {
+            "node": "set_fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items1": {
+      "main": [
+        [
+          {
+            "node": "Slack",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "clean_url",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "write_check",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "write_werkvoorraad",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_html1": {
+      "main": [
+        [
+          {
+            "node": "get_content1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_content1": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "groeperen?": {
+      "main": [
+        [
+          {
+            "node": "get_html2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "get_html1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "statuscode_ok?": {
+      "main": [
+        [
+          {
+            "node": "groeperen?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "create_prompt1": {
+      "main": [
+        [
+          {
+            "node": "OpenAI2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_content2": {
+      "main": [
+        [
+          {
+            "node": "If2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_html2": {
+      "main": [
+        [
+          {
+            "node": "get_content2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "set_fields2": {
+      "main": [
+        [
+          {
+            "node": "escape_apostrophe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI2": {
+      "main": [
+        [
+          {
+            "node": "set_fields2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_sql_input": {
+      "main": [
+        [
+          {
+            "node": "get_url's",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "create_table": {
+      "main": [
+        [
+          {
+            "node": "get_sql_input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request4": {
+      "main": [
+        [
+          {
+            "node": "create_table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "write_check": {
+      "main": [
+        []
+      ]
+    },
+    "get_url's": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "write_result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "remove-from_check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "remove-from_check": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "create_prompt1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If2": {
+      "main": [
+        [
+          {
+            "node": "create_prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "468fa9e6-7966-4b8c-b2f9-6fe9ed4c6c40",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d66bcefaeb1ebbf9e9ef46ecd8e292274f2ca2d114a2f1e119cb976bb16136a1"
+  },
+  "id": "BfWT8z4j2hFCbFUw",
+  "tags": [
+    {
+      "createdAt": "2025-05-27T08:20:06.484Z",
+      "updatedAt": "2025-05-27T08:20:06.484Z",
+      "id": "cVQTlfOUvEIqcnfv",
+      "name": "SEO Content"
+    }
+  ]
+}

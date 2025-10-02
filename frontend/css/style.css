@@ -1,0 +1,28 @@
+/* Simple custom styles - no preprocessing needed! */
+body {
+    background-color: #f8f9fa;
+}
+
+.card {
+    box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075);
+}
+
+#result {
+    padding: 1rem;
+    background-color: #f1f3f5;
+    border-radius: 0.25rem;
+    white-space: pre-wrap;
+    display: none;
+}
+
+#result.show {
+    display: block;
+}
+
+.status-ok {
+    color: green;
+}
+
+.status-error {
+    color: red;
+}

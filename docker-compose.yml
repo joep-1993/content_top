@@ -1,0 +1,32 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8001:8000"  # Access at http://localhost:8001
+    volumes:
+      # Mount for live editing - no build needed!
+      - ./backend:/app/backend
+      - ./frontend:/app/frontend
+      - ./thema_ads_project:/app/thema_ads_project
+      - ./thema_ads_optimized/.env:/app/thema_ads_project/thema_ads_optimized/.env
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - AI_MODEL=${AI_MODEL:-gpt-4o-mini}
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/myapp
+    depends_on:
+      - db
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: myapp
+    ports:
+      - "5433:5432"  # Avoid conflicts with local PostgreSQL
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

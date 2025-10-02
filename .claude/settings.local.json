@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx n8n-mcp:*)",
+      "Bash(claude mcp:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
