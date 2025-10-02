@@ -154,6 +154,7 @@ CREATE TABLE thema_ads_jobs (
     successful_ad_groups INTEGER DEFAULT 0,
     failed_ad_groups INTEGER DEFAULT 0,
     skipped_ad_groups INTEGER DEFAULT 0,
+    batch_size INTEGER DEFAULT 7500,            -- User-configurable API batch size (1000-10000)
     input_file VARCHAR(255),
     started_at TIMESTAMP,
     completed_at TIMESTAMP,
@@ -170,6 +171,7 @@ CREATE TABLE thema_ads_job_items (
     campaign_id VARCHAR(50),           -- Optional: from CSV or fetched at runtime
     campaign_name TEXT,                -- Optional: from CSV or fetched at runtime
     ad_group_id VARCHAR(50) NOT NULL,
+    ad_group_name TEXT,                -- Optional: for ID resolution (Excel precision loss fix)
     status VARCHAR(20) NOT NULL DEFAULT 'pending',
     new_ad_resource VARCHAR(500),
     error_message TEXT,
@@ -185,6 +187,7 @@ CREATE TABLE thema_ads_input_data (
     campaign_id VARCHAR(50),           -- Optional: from CSV or fetched at runtime
     campaign_name TEXT,                -- Optional: from CSV or fetched at runtime
     ad_group_id VARCHAR(50) NOT NULL,
+    ad_group_name TEXT,                -- Optional: for ID resolution (Excel precision loss fix)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -264,8 +267,8 @@ python-dotenv==1.0.0      # Environment variable management
 **Failed**: Actual errors (API failures, permission issues, etc.)
 
 ### Thema Ads Job Management
-- `POST /api/thema-ads/discover` - Auto-discover ad groups from Google Ads MCC account (see Auto-Discover Mode below)
-- `POST /api/thema-ads/upload` - Upload CSV file and auto-start processing (flexible format, see CSV Format below)
+- `POST /api/thema-ads/discover` - Auto-discover ad groups from Google Ads MCC account (params: limit, batch_size, see Auto-Discover Mode below)
+- `POST /api/thema-ads/upload` - Upload CSV file and auto-start processing (params: file, batch_size, see CSV Format below)
 - `POST /api/thema-ads/jobs/{job_id}/start` - Start processing job (deprecated - jobs auto-start on upload)
 - `POST /api/thema-ads/jobs/{job_id}/pause` - Pause running job
 - `POST /api/thema-ads/jobs/{job_id}/resume` - Resume paused/failed job
@@ -285,11 +288,12 @@ Frontend has two tabs:
 - Campaigns: Name starts with "HS/" AND status = ENABLED
 - Ad Groups: Status = ENABLED AND does NOT have SD_DONE label
 - Optional limit parameter (recommended: 100-1000 for testing)
+- Configurable batch_size (1000-10000, default: 7500)
 - Returns discovered ad groups and automatically starts processing
 
 **Performance:**
 - Batched label checking: ~30 API calls for 146k ad groups (vs 146k individual calls)
-- Batch size: 5,000 ad groups per query
+- Default batch size: 7,500 ad groups per query (user-configurable)
 - Discovery time: ~1-2 minutes for full account scan
 
 #### CSV Format
@@ -302,15 +306,23 @@ Frontend has two tabs:
 - `campaign_id` (optional)
 - `campaign_name` (optional)
 - `ad_group_id` (required)
+- `ad_group_name` (optional, recommended) - resolves correct IDs to fix Excel precision loss
+
+**Frontend Parameters**:
+- `batch_size` (optional, default: 7500) - API batch size for processing (1000-10000)
 
 **Notes**:
 - Column order doesn't matter (parsed by name, not position)
-- Extra columns are ignored (e.g., status, budget, ad group name)
+- Extra columns are ignored (e.g., status, budget)
 - Empty rows are automatically skipped
 - Delimiter auto-detected (comma or semicolon)
 - Maximum file size: 30MB
 - Encoding auto-detected (UTF-8, Windows-1252, ISO-8859-1, Latin1)
 - Jobs automatically start processing after successful upload
+- **Excel Precision Loss**: Include `ad_group_name` column to avoid ID corruption from scientific notation
+  - Excel converts large IDs (168066123456) to scientific notation (1.68066E+11)
+  - Scientific notation loses precision (becomes 168066000000)
+  - System uses ad_group_name to look up correct ID from Google Ads API
 
 #### Downloaded CSV Format (Failed/Skipped Items)
 - `customer_id` - Google Ads customer ID

@@ -167,24 +167,35 @@ for encoding in encodings:
         continue
 ```
 
-### Google Ads API Query Filter Limits
+### Google Ads API Query Filter Limits - Configurable Batch Size
 - **Error**: `FILTER_HAS_TOO_MANY_VALUES` - "Request contains an invalid argument"
 - **Cause**: WHERE IN clause with too many values (e.g., 50,000+ ad group resources)
-- **Solution**: Batch queries into chunks of resources per query
+- **Solution**: Batch queries with user-configurable batch size (default: 7500)
 ```python
-BATCH_SIZE = 7500  # Optimized limit (50k+ fails, 5k safe, 7.5k optimal)
-for i in range(0, len(resources), BATCH_SIZE):
-    batch = resources[i:i + BATCH_SIZE]
-    resources_str = ", ".join(f"'{r}'" for r in batch)
-    query = f"SELECT ... WHERE resource IN ({resources_str})"
-    response = service.search(customer_id, query)
-    # Process batch results
+# Frontend: User selects batch size (1000-10000, default 7500)
+batch_size = batchSizeInput.value || 7500
+
+# Backend: Store batch_size in job
+job_id = create_job(input_data, batch_size=batch_size)
+
+# Processing: Use dynamic batch_size instead of hardcoded constant
+async def prefetch_existing_ads_bulk(client, customer_id, ad_group_resources, batch_size=7500):
+    for i in range(0, len(resources), batch_size):
+        batch = resources[i:i + batch_size]
+        resources_str = ", ".join(f"'{r}'" for r in batch)
+        query = f"SELECT ... WHERE resource IN ({resources_str})"
+        response = service.search(customer_id, query)
 ```
 - **Impact**: Customers with 10k+ ad groups were failing completely before this fix
-- **Performance**:
+- **Performance Optimization**:
   - 1,000 → 5,000: ~5x speedup
   - 5,000 → 7,500: Additional ~33% speedup (fewer API calls)
   - Example: 54,968 ad groups = 11 batches @ 5k vs 8 batches @ 7.5k (27% fewer calls)
+- **User Control**:
+  - Smaller batches (1000-3000) for rate-limited scenarios
+  - Default 7500 for optimal performance
+  - Larger batches (up to 10000) for maximum speed
+  - Stored per-job for consistency across pauses/resumes
 
 ### Large CSV Upload Timeouts
 - **Error**: Connection timeout during upload, "Failed to load jobs list (request timed out)"
@@ -481,6 +492,39 @@ function formatDate(dateString) {
 }
 ```
 - **Database Configuration**: PostgreSQL timezone set to UTC, columns use TIMESTAMP (without time zone)
+
+### User-Configurable Performance Parameters
+- **Pattern**: Allow users to adjust performance-critical parameters via UI
+- **Benefit**: Optimize for different scenarios (rate limits, speed, API quotas) without code changes
+- **Example**: Configurable batch size for API queries
+```python
+# Frontend: Input field with validation
+<input type="number" id="batchSize" value="7500" min="1000" max="10000">
+
+# JavaScript: Send to backend
+const batchSize = parseInt(document.getElementById('batchSize').value) || 7500;
+formData.append('batch_size', batchSize);
+
+# Backend: Store with job
+job_id = create_job(input_data, batch_size=batch_size)
+cur.execute("INSERT INTO jobs (batch_size) VALUES (%s)", (batch_size,))
+
+# Processing: Retrieve and use
+job_details = get_job_status(job_id)
+batch_size = job_details.get('batch_size', 7500)
+processor = ThemaAdsProcessor(config, batch_size=batch_size)
+
+# Operations: Use dynamic value
+async def prefetch_data(client, resources, batch_size=7500):
+    for i in range(0, len(resources), batch_size):
+        # Process batch...
+```
+- **Use Cases**:
+  - API rate limiting: Lower batch size (1000-3000) to stay under quota
+  - Maximum speed: Higher batch size (7500-10000) for fast processing
+  - Testing: Small batch size (100) for quick validation
+- **Implementation**: Database column stores preference, used throughout processing lifecycle
+- **Persistence**: Batch size saved per-job ensures consistency across pauses/resumes
 
 ---
 _Last updated: 2025-10-02_
