@@ -13,6 +13,7 @@ _Tasks currently being worked on_
 ## Completed
 _Finished tasks (move here when done)_
 
+- [x] Fix tab text visibility when selected (active tab text now blue instead of white-on-white) #claude-session:2025-10-02
 - [x] Label the 4 unlabeled ads created in initial run (verified all 4 ads already have SINGLES_DAY and THEMA_AD labels) #claude-session:2025-10-02
 - [x] Fix Auto-Discover button alignment (changed btn-success to btn-primary to match CSV upload button) #claude-session:2025-10-02
 - [x] Optimize auto-discover with batched label checking (5000x faster: 30 API calls instead of 146k) #claude-session:2025-10-02
