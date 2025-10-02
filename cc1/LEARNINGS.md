@@ -386,5 +386,45 @@ async def upload_csv(file: UploadFile = File(...), background_tasks: BackgroundT
     return {"job_id": job_id, "total_items": len(input_data), "status": "processing"}
 ```
 
+### Skipped vs Failed Status Differentiation
+- **Pattern**: Distinguish between actual failures and items that can't be processed
+- **Benefit**: Clearer reporting, better troubleshooting, prevents false alarms
+- **Example**: Mark items without existing ads as "skipped" instead of "failed"
+```python
+# Backend status logic
+if result.success and "Already processed" in result.error:
+    status = 'skipped'  # Has SD_DONE label, already processed
+elif not result.success and "No existing ad" in result.error:
+    status = 'skipped'  # No existing ads to work with (not a failure)
+elif result.success:
+    status = 'completed'
+else:
+    status = 'failed'  # Actual error (API failure, etc.)
+
+# Frontend displays three categories
+# Success: New ads created
+# Skipped: Already processed OR no existing ads
+# Failed: Actual errors that need attention
+```
+
+### Clear Error Messaging in CSV Exports
+- **Pattern**: Transform technical error messages into user-friendly reasons
+- **Benefit**: Users understand why items were skipped/failed without technical knowledge
+- **Example**: CSV export with formatted reasons
+```python
+# Format reason based on status and error message
+if item['status'] == 'skipped':
+    if 'Already processed' in item['error_message']:
+        reason = "Ad group has 'SD_DONE' label (already processed)"
+    elif 'No existing ad' in item['error_message']:
+        reason = "Ad group has 0 ads"
+    else:
+        reason = item['error_message'] or 'Skipped'
+else:
+    reason = item['error_message'] or 'Unknown error'
+
+# CSV includes: customer_id, ad_group_id, status, reason
+```
+
 ---
 _Last updated: 2025-10-02_

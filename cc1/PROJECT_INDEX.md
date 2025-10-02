@@ -245,6 +245,8 @@ python-dotenv==1.0.0      # Environment variable management
 **Ad Groups get labeled with:**
 - `BF_2025` - Black Friday 2025 campaign marker
 - `SD_DONE` - Processing complete marker (used to skip already-processed ad groups)
+  - **Only applied to successfully processed ad groups**
+  - Ad groups without existing ads are NOT labeled (skipped for different reason)
 
 **New Ads get labeled with:**
 - `SINGLES_DAY` - Singles Day themed ad
@@ -252,6 +254,14 @@ python-dotenv==1.0.0      # Environment variable management
 
 **Existing Ads get labeled with:**
 - `THEMA_ORIGINAL` - Original ad marker
+
+### Job Status Categories
+**Completed**: Successfully created new themed ads
+**Skipped**: Two types
+- Already processed (has SD_DONE label from previous run)
+- No existing ads (ad group has 0 ads, can't be processed)
+
+**Failed**: Actual errors (API failures, permission issues, etc.)
 
 ### Thema Ads Job Management
 - `POST /api/thema-ads/upload` - Upload CSV file and auto-start processing (flexible format, see CSV Format below)
@@ -282,6 +292,17 @@ python-dotenv==1.0.0      # Environment variable management
 - Maximum file size: 30MB
 - Encoding auto-detected (UTF-8, Windows-1252, ISO-8859-1, Latin1)
 - Jobs automatically start processing after successful upload
+
+#### Downloaded CSV Format (Failed/Skipped Items)
+- `customer_id` - Google Ads customer ID
+- `campaign_id` - Campaign ID (if available)
+- `campaign_name` - Campaign name (if available)
+- `ad_group_id` - Ad group ID
+- `status` - "failed" or "skipped"
+- `reason` - Human-readable explanation:
+  - "Ad group has 'SD_DONE' label (already processed)"
+  - "Ad group has 0 ads"
+  - Original error message for actual failures
 
 ---
 _Last updated: 2025-10-02_

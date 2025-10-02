@@ -14,6 +14,7 @@ _Tasks currently being worked on_
 ## Completed
 _Finished tasks (move here when done)_
 
+- [x] Update jobs list table to show Success/Failed/Skipped counts #claude-session:2025-10-02
 - [x] Include skipped items in downloadable CSV with clear reasons (e.g., "Ad group has 0 ads" or "Ad group has 'SD_DONE' label") #claude-session:2025-10-02
 - [x] Count ad groups without existing ads as skipped instead of failed (no SD_DONE label applied) #claude-session:2025-10-02
 - [x] Add skipped items tracking to frontend (separate column for already-processed ad groups with SD_DONE label) #claude-session:2025-10-02
