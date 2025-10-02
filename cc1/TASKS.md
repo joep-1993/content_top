@@ -14,6 +14,7 @@ _Tasks currently being worked on_
 ## Completed
 _Finished tasks (move here when done)_
 
+- [x] Count ad groups without existing ads as skipped instead of failed (no SD_DONE label applied) #claude-session:2025-10-02
 - [x] Add skipped items tracking to frontend (separate column for already-processed ad groups with SD_DONE label) #claude-session:2025-10-02
 - [x] Fix results mapping bug causing false failures (properly track processed vs failed vs skipped ad groups) #claude-session:2025-10-02
 - [x] Fix comma decimal separator in scientific notation (handle 1,76256E+11 from European Excel locales) #claude-session:2025-10-02

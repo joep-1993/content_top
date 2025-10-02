@@ -355,6 +355,10 @@ class ThemaAdsService:
                 for result, inp in zip(results, customer_inputs):
                     # Determine status based on result
                     if result.success and result.error and "Already processed" in result.error:
+                        # Ad group already has SD_DONE label
+                        status = 'skipped'
+                    elif not result.success and result.error and "No existing ad" in result.error:
+                        # Ad group has no existing ads to work with (not a failure, just can't process)
                         status = 'skipped'
                     elif result.success:
                         status = 'completed'
