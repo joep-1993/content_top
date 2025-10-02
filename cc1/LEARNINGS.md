@@ -89,6 +89,20 @@ if not customer_id or not ad_group_id:
 customer_id = row['customer_id'].strip().replace('-', '')
 ```
 
+### CSV Encoding Issues
+- **Error**: `'utf-8' codec can't decode byte 0xe8 in position X: invalid continuation byte`
+- **Cause**: CSV file exported from Excel or other tools using non-UTF-8 encoding (Windows-1252, ISO-8859-1)
+- **Solution**: Try multiple encodings in fallback order
+```python
+encodings = ['utf-8', 'utf-8-sig', 'windows-1252', 'iso-8859-1', 'latin1']
+for encoding in encodings:
+    try:
+        decoded = contents.decode(encoding)
+        break
+    except UnicodeDecodeError:
+        continue
+```
+
 ### GitHub Push Protection Blocking Secrets
 - **Error**: `Push cannot contain secrets` - Google OAuth tokens, Azure secrets detected
 - **Cause**: Hardcoded credentials in thema_ads script were committed to git history

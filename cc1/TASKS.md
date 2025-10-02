@@ -14,6 +14,7 @@ _Tasks currently being worked on_
 ## Completed
 _Finished tasks (move here when done)_
 
+- [x] Fix CSV encoding issues - support multiple encodings (UTF-8, Windows-1252, ISO-8859-1) #claude-session:2025-10-02
 - [x] Extend CSV upload file size limit from 10MB to 30MB (updated frontend validation) #claude-session:2025-10-02
 - [x] Refactor legacy thema_ads script for security (removed hardcoded secrets, environment variables, .env setup) #claude-session:2025-10-02
 - [x] Set up Git repository and GitHub integration (Git init, SSH authentication, GitHub push, secret protection) #claude-session:2025-10-02

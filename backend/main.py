@@ -236,7 +236,22 @@ async def upload_csv(file: UploadFile = File(...)):
         contents = await file.read()
         logger.info(f"File size: {len(contents)} bytes")
 
-        decoded = contents.decode('utf-8')
+        # Try multiple encodings to decode the file
+        decoded = None
+        encodings = ['utf-8', 'utf-8-sig', 'windows-1252', 'iso-8859-1', 'latin1']
+        for encoding in encodings:
+            try:
+                decoded = contents.decode(encoding)
+                logger.info(f"Successfully decoded file using encoding: {encoding}")
+                break
+            except UnicodeDecodeError:
+                continue
+
+        if decoded is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Unable to decode file. Please ensure it's a valid CSV file saved with UTF-8 or Windows-1252 encoding."
+            )
 
         # Auto-detect delimiter (comma or semicolon)
         sample = decoded[:1024]  # Check first 1KB

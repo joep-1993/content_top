@@ -256,6 +256,7 @@ python-dotenv==1.0.0      # Environment variable management
 - Empty rows are automatically skipped
 - Delimiter auto-detected (comma or semicolon)
 - Maximum file size: 30MB
+- Encoding auto-detected (UTF-8, Windows-1252, ISO-8859-1, Latin1)
 
 ---
 _Last updated: 2025-10-02_
