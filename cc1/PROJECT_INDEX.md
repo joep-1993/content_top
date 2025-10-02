@@ -253,8 +253,8 @@ python-dotenv==1.0.0      # Environment variable management
 - `THEMA_ORIGINAL` - Original ad marker
 
 ### Thema Ads Job Management
-- `POST /api/thema-ads/upload` - Upload CSV file (flexible format, see CSV Format below)
-- `POST /api/thema-ads/jobs/{job_id}/start` - Start processing job
+- `POST /api/thema-ads/upload` - Upload CSV file and auto-start processing (flexible format, see CSV Format below)
+- `POST /api/thema-ads/jobs/{job_id}/start` - Start processing job (deprecated - jobs auto-start on upload)
 - `POST /api/thema-ads/jobs/{job_id}/pause` - Pause running job
 - `POST /api/thema-ads/jobs/{job_id}/resume` - Resume paused/failed job
 - `GET /api/thema-ads/jobs/{job_id}` - Get job status & progress
@@ -280,6 +280,7 @@ python-dotenv==1.0.0      # Environment variable management
 - Delimiter auto-detected (comma or semicolon)
 - Maximum file size: 30MB
 - Encoding auto-detected (UTF-8, Windows-1252, ISO-8859-1, Latin1)
+- Jobs automatically start processing after successful upload
 
 ---
 _Last updated: 2025-10-02_

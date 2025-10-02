@@ -243,10 +243,10 @@ def convert_scientific_notation(value: str) -> str:
 
 
 @app.post("/api/thema-ads/upload")
-async def upload_csv(file: UploadFile = File(...)):
+async def upload_csv(file: UploadFile = File(...), background_tasks: BackgroundTasks = None):
     """
     Upload CSV file with customer_id and ad_group_id columns.
-    Creates a new job and returns job_id.
+    Creates a new job and automatically starts processing.
     """
     import logging
     logger = logging.getLogger(__name__)
@@ -330,10 +330,15 @@ async def upload_csv(file: UploadFile = File(...)):
         job_id = thema_ads_service.create_job(input_data)
         logger.info(f"Job created with ID: {job_id}")
 
+        # Automatically start the job
+        if background_tasks:
+            background_tasks.add_task(thema_ads_service.process_job, job_id)
+            logger.info(f"Job {job_id} queued for automatic processing")
+
         return {
             "job_id": job_id,
             "total_items": len(input_data),
-            "status": "created"
+            "status": "processing"
         }
 
     except HTTPException:

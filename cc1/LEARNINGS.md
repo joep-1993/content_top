@@ -333,5 +333,25 @@ if missing:
     raise RuntimeError(f"Missing required environment variables: {', '.join(missing)}")
 ```
 
+### Automatic Background Task Execution
+- **Pattern**: Use FastAPI BackgroundTasks to auto-start long-running jobs after upload
+- **Benefit**: Better UX (no manual start button), faster workflow, cleaner API
+- **Example**: Auto-start job processing after CSV upload completes
+```python
+from fastapi import BackgroundTasks
+
+@app.post("/api/thema-ads/upload")
+async def upload_csv(file: UploadFile = File(...), background_tasks: BackgroundTasks = None):
+    # Parse CSV and create job
+    job_id = thema_ads_service.create_job(input_data)
+
+    # Automatically start processing in background
+    if background_tasks:
+        background_tasks.add_task(thema_ads_service.process_job, job_id)
+        logger.info(f"Job {job_id} queued for automatic processing")
+
+    return {"job_id": job_id, "total_items": len(input_data), "status": "processing"}
+```
+
 ---
 _Last updated: 2025-10-02_

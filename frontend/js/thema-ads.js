@@ -183,7 +183,7 @@ async function uploadCSV() {
         if (response.ok) {
             console.log('Upload successful:', data);
             showAlert('uploadResult',
-                `✅ Job created successfully!<br>Job ID: ${data.job_id}<br>Total items: ${data.total_items}`,
+                `✅ Upload successful! Processing started automatically.<br>Job ID: ${data.job_id}<br>Total items: ${data.total_items}`,
                 'success'
             );
             fileInput.value = '';
