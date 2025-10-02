@@ -14,6 +14,8 @@ _Tasks currently being worked on_
 ## Completed
 _Finished tasks (move here when done)_
 
+- [x] Increase batch size from 1,000 to 5,000 for 5x performance improvement on large customers #claude-session:2025-10-02
+- [x] Fix timezone display issue (UTC timestamps now properly converted to local timezone) #claude-session:2025-10-02
 - [x] Update jobs list table to show Success/Failed/Skipped counts #claude-session:2025-10-02
 - [x] Include skipped items in downloadable CSV with clear reasons (e.g., "Ad group has 0 ads" or "Ad group has 'SD_DONE' label") #claude-session:2025-10-02
 - [x] Count ad groups without existing ads as skipped instead of failed (no SD_DONE label applied) #claude-session:2025-10-02

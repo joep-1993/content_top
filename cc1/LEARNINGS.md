@@ -158,10 +158,10 @@ for encoding in encodings:
 
 ### Google Ads API Query Filter Limits
 - **Error**: `FILTER_HAS_TOO_MANY_VALUES` - "Request contains an invalid argument"
-- **Cause**: WHERE IN clause with too many values (e.g., 10,000+ ad group resources)
-- **Solution**: Batch queries into chunks of 1000 resources per query
+- **Cause**: WHERE IN clause with too many values (e.g., 50,000+ ad group resources)
+- **Solution**: Batch queries into chunks of resources per query
 ```python
-BATCH_SIZE = 1000
+BATCH_SIZE = 5000  # Safe limit found through testing (50k+ fails, 5k works)
 for i in range(0, len(resources), BATCH_SIZE):
     batch = resources[i:i + BATCH_SIZE]
     resources_str = ", ".join(f"'{r}'" for r in batch)
@@ -170,6 +170,7 @@ for i in range(0, len(resources), BATCH_SIZE):
     # Process batch results
 ```
 - **Impact**: Customers with 10k+ ad groups were failing completely before this fix
+- **Performance**: Increasing from 1,000 to 5,000 provides ~5x speedup for large customers (fewer API calls)
 
 ### Large CSV Upload Timeouts
 - **Error**: Connection timeout during upload, "Failed to load jobs list (request timed out)"
