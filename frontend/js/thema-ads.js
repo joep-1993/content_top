@@ -242,7 +242,7 @@ async function refreshJobs() {
         }
 
         let html = '<div class="table-responsive"><table class="table table-hover">';
-        html += '<thead><tr><th>Job ID</th><th>Status</th><th>Progress</th><th>Success/Failed</th><th>Created</th><th>Actions</th></tr></thead><tbody>';
+        html += '<thead><tr><th>Job ID</th><th>Status</th><th>Progress</th><th>Success/Failed/Skipped</th><th>Created</th><th>Actions</th></tr></thead><tbody>';
 
         data.jobs.forEach(job => {
             const progress = job.total_ad_groups > 0
@@ -259,7 +259,7 @@ async function refreshJobs() {
                         <div class="progress-bar" style="width: ${progress}%">${progress}%</div>
                     </div>
                 </td>
-                <td>${job.successful_ad_groups} / ${job.failed_ad_groups}</td>
+                <td>${job.successful_ad_groups} / ${job.failed_ad_groups} / ${job.skipped_ad_groups || 0}</td>
                 <td>${formatDate(job.created_at)}</td>
                 <td>
                     <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); showJobDetail(${job.id})">
