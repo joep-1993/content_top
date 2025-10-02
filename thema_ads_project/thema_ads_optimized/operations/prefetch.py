@@ -44,7 +44,7 @@ async def prefetch_existing_ads_bulk(
     ad_group_resources: List[str],
     exclude_label_name: str = "BF_2025"
 ) -> Dict[str, ExistingAd]:
-    """Fetch all existing RSAs for multiple ad groups in one query."""
+    """Fetch all existing RSAs for multiple ad groups in batched queries."""
 
     def _fetch():
         ga_service = client.get_service("GoogleAdsService")
@@ -68,60 +68,64 @@ async def prefetch_existing_ads_bulk(
         except Exception as e:
             logger.warning(f"Could not fetch exclude label: {e}")
 
-        # Build main query
-        resources_str = ", ".join(f"'{r}'" for r in ad_group_resources)
-
-        query = f"""
-            SELECT
-                ad_group_ad.ad_group,
-                ad_group_ad.resource_name,
-                ad_group_ad.status,
-                ad_group_ad.ad.id,
-                ad_group_ad.ad.final_urls,
-                ad_group_ad.ad.responsive_search_ad.headlines,
-                ad_group_ad.ad.responsive_search_ad.descriptions,
-                ad_group_ad.ad.responsive_search_ad.path1,
-                ad_group_ad.ad.responsive_search_ad.path2
-            FROM ad_group_ad
-            WHERE ad_group_ad.ad_group IN ({resources_str})
-                AND ad_group_ad.ad.type = RESPONSIVE_SEARCH_AD
-                AND ad_group_ad.status != REMOVED
-        """
-
-        # Add label exclusion if label exists
-        if label_resources:
-            labels_str = ", ".join(f"'{lr}'" for lr in label_resources)
-            query += f" AND ad_group_ad.labels CONTAINS NONE ({labels_str})"
-
-        query += " ORDER BY ad_group_ad.status ASC"
-
+        # Batch queries to avoid FILTER_HAS_TOO_MANY_VALUES error
+        BATCH_SIZE = 1000
         ads_map = {}
+
         try:
-            response = ga_service.search(customer_id=customer_id, query=query)
+            for i in range(0, len(ad_group_resources), BATCH_SIZE):
+                batch = ad_group_resources[i:i + BATCH_SIZE]
+                resources_str = ", ".join(f"'{r}'" for r in batch)
 
-            for row in response:
-                ad_group_resource = row.ad_group_ad.ad_group
+                query = f"""
+                    SELECT
+                        ad_group_ad.ad_group,
+                        ad_group_ad.resource_name,
+                        ad_group_ad.status,
+                        ad_group_ad.ad.id,
+                        ad_group_ad.ad.final_urls,
+                        ad_group_ad.ad.responsive_search_ad.headlines,
+                        ad_group_ad.ad.responsive_search_ad.descriptions,
+                        ad_group_ad.ad.responsive_search_ad.path1,
+                        ad_group_ad.ad.responsive_search_ad.path2
+                    FROM ad_group_ad
+                    WHERE ad_group_ad.ad_group IN ({resources_str})
+                        AND ad_group_ad.ad.type = RESPONSIVE_SEARCH_AD
+                        AND ad_group_ad.status != REMOVED
+                """
 
-                # Only store first (best) ad per ad group
-                if ad_group_resource in ads_map:
-                    continue
+                # Add label exclusion if label exists
+                if label_resources:
+                    labels_str = ", ".join(f"'{lr}'" for lr in label_resources)
+                    query += f" AND ad_group_ad.labels CONTAINS NONE ({labels_str})"
 
-                rsa = row.ad_group_ad.ad.responsive_search_ad
-                headlines = [a.text for a in getattr(rsa, "headlines", [])] if rsa and rsa.headlines else []
-                descriptions = [a.text for a in getattr(rsa, "descriptions", [])] if rsa and rsa.descriptions else []
-                final_urls = list(row.ad_group_ad.ad.final_urls) if row.ad_group_ad.ad.final_urls else []
+                query += " ORDER BY ad_group_ad.status ASC"
 
-                ads_map[ad_group_resource] = ExistingAd(
-                    resource_name=row.ad_group_ad.resource_name,
-                    status=str(row.ad_group_ad.status),
-                    headlines=headlines,
-                    descriptions=descriptions,
-                    final_urls=final_urls,
-                    path1=getattr(rsa, "path1", "") or "",
-                    path2=getattr(rsa, "path2", "") or ""
-                )
+                response = ga_service.search(customer_id=customer_id, query=query)
 
-            logger.info(f"Prefetched {len(ads_map)} existing ads for {len(ad_group_resources)} ad groups")
+                for row in response:
+                    ad_group_resource = row.ad_group_ad.ad_group
+
+                    # Only store first (best) ad per ad group
+                    if ad_group_resource in ads_map:
+                        continue
+
+                    rsa = row.ad_group_ad.ad.responsive_search_ad
+                    headlines = [a.text for a in getattr(rsa, "headlines", [])] if rsa and rsa.headlines else []
+                    descriptions = [a.text for a in getattr(rsa, "descriptions", [])] if rsa and rsa.descriptions else []
+                    final_urls = list(row.ad_group_ad.ad.final_urls) if row.ad_group_ad.ad.final_urls else []
+
+                    ads_map[ad_group_resource] = ExistingAd(
+                        resource_name=row.ad_group_ad.resource_name,
+                        status=str(row.ad_group_ad.status),
+                        headlines=headlines,
+                        descriptions=descriptions,
+                        final_urls=final_urls,
+                        path1=getattr(rsa, "path1", "") or "",
+                        path2=getattr(rsa, "path2", "") or ""
+                    )
+
+            logger.info(f"Prefetched {len(ads_map)} existing ads for {len(ad_group_resources)} ad groups (in {len(ad_group_resources)//BATCH_SIZE + 1} batches)")
         except Exception as e:
             logger.error(f"Failed to prefetch ads for customer {customer_id}: {e}")
 
@@ -146,43 +150,50 @@ async def prefetch_ad_group_labels(
             return {}
 
         ga_service = client.get_service("GoogleAdsService")
-        resources_str = ", ".join(f"'{r}'" for r in ad_group_resources)
-
-        query = f"""
-            SELECT
-                ad_group_label.ad_group,
-                ad_group_label.label
-            FROM ad_group_label
-            WHERE ad_group_label.ad_group IN ({resources_str})
-        """
-
         ag_labels_map = {ag_res: False for ag_res in ad_group_resources}
 
+        # First get the label resource for SD_DONE
+        label_query = f"""
+            SELECT label.resource_name, label.name
+            FROM label
+            WHERE label.name = '{label_name}'
+        """
+        sd_done_resource = None
         try:
-            response = ga_service.search(customer_id=customer_id, query=query)
+            label_search = ga_service.search(customer_id=customer_id, query=label_query)
+            for row in label_search:
+                sd_done_resource = row.label.resource_name
+                break
+        except Exception:
+            pass
 
-            # First get the label resource for SD_DONE
-            label_query = f"""
-                SELECT label.resource_name, label.name
-                FROM label
-                WHERE label.name = '{label_name}'
-            """
-            sd_done_resource = None
-            try:
-                label_search = ga_service.search(customer_id=customer_id, query=label_query)
-                for row in label_search:
-                    sd_done_resource = row.label.resource_name
-                    break
-            except Exception:
-                pass
+        if not sd_done_resource:
+            logger.info(f"Label {label_name} doesn't exist yet, no ad groups to skip")
+            return ag_labels_map
 
-            if sd_done_resource:
+        # Batch queries to avoid FILTER_HAS_TOO_MANY_VALUES error
+        BATCH_SIZE = 1000
+        try:
+            for i in range(0, len(ad_group_resources), BATCH_SIZE):
+                batch = ad_group_resources[i:i + BATCH_SIZE]
+                resources_str = ", ".join(f"'{r}'" for r in batch)
+
+                query = f"""
+                    SELECT
+                        ad_group_label.ad_group,
+                        ad_group_label.label
+                    FROM ad_group_label
+                    WHERE ad_group_label.ad_group IN ({resources_str})
+                """
+
+                response = ga_service.search(customer_id=customer_id, query=query)
+
                 for row in response:
                     if row.ad_group_label.label == sd_done_resource:
                         ag_labels_map[row.ad_group_label.ad_group] = True
 
             has_label_count = sum(1 for v in ag_labels_map.values() if v)
-            logger.info(f"Found {has_label_count} ad groups with {label_name} label")
+            logger.info(f"Found {has_label_count} ad groups with {label_name} label (checked in {len(ad_group_resources)//BATCH_SIZE + 1} batches)")
 
         except Exception as e:
             logger.warning(f"Failed to check ad group labels: {e}")
