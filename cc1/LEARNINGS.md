@@ -63,6 +63,21 @@ docker-compose exec -T db psql -U postgres -d dbname -c "COPY table (column) FRO
   - Windows/Linux: Ctrl + Shift + R or Ctrl + F5
   - Mac: Cmd + Shift + R
 
+### Browser Auto-Linking HTML Tags in Template Literals
+- **Problem**: When inserting HTML content via template literals, browser auto-links HTML tags (e.g., `</div>` becomes a clickable link)
+- **Cause**: Inserting raw HTML with `<a href>` tags directly into template literals like `${content}` causes browser to parse ALL text including the subsequent HTML tags as potential URLs
+- **Solution**: Create DOM structure first with empty placeholders, then insert HTML content separately via `innerHTML`
+- **Example**:
+```javascript
+// ❌ Wrong: Browser auto-links HTML tags
+html += `<div>${content}</div>`;
+
+// ✅ Correct: Insert HTML separately
+const div = document.createElement('div');
+div.innerHTML = content;
+```
+- **Location**: frontend/js/app.js - refreshStatus() function
+
 ## Git Commands
 ```bash
 # SSH Setup
