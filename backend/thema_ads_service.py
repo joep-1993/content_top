@@ -12,8 +12,8 @@ from backend.database import get_db_connection
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Add thema_ads_project to path
-THEMA_ADS_PATH = Path(__file__).parent.parent / "thema_ads_project" / "thema_ads_optimized"
+# Add thema_ads_optimized to path
+THEMA_ADS_PATH = Path(__file__).parent.parent / "thema_ads_optimized"
 sys.path.insert(0, str(THEMA_ADS_PATH))
 
 

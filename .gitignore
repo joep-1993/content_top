@@ -34,6 +34,9 @@ cc1/*.log
 # Secrets and sensitive data
 thema_ads_project/thema_ads
 
+# Old directory structure (merged into thema_ads_optimized/)
+thema_ads_project/
+
 # Large data files
 *.xlsx
 *.xls

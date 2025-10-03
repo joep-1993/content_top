@@ -12,35 +12,31 @@ test2/
 │   ├── LEARNINGS.md      # Knowledge capture
 │   ├── BACKLOG.md        # Future planning
 │   └── PROJECT_INDEX.md  # This file
-├── thema_ads_project/     # Google Ads automation project
-│   ├── thema_ads          # Legacy script (refactored to use .env)
-│   ├── .env               # Credentials for legacy script (git ignored)
-│   ├── .env.example       # Template for legacy script environment
-│   ├── README.md          # Legacy script setup instructions
-│   └── thema_ads_optimized/  # High-performance optimized version
-│       ├── config.py       # Environment-based configuration
-│       ├── models.py       # Data structures
-│       ├── google_ads_client.py  # Client initialization
-│       ├── main_optimized.py     # Async orchestrator
-│       ├── operations/     # API operations (prefetch, ads, labels)
-│       │   ├── prefetch.py
-│       │   ├── ads.py
-│       │   └── labels.py
-│       ├── templates/      # Ad content generators
-│       │   └── generators.py
-│       ├── processors/     # Data loading (Excel/CSV)
-│       │   └── data_loader.py
-│       ├── utils/          # Utilities (cache, retry)
-│       │   ├── cache.py
-│       │   └── retry.py
-│       ├── data/           # Input files (mounted volume)
-│       ├── logs/           # Output logs (mounted volume)
-│       ├── Dockerfile      # Multi-stage build
-│       ├── docker-compose.yml
-│       ├── docker-run.sh   # Helper script
-│       ├── requirements.txt
-│       ├── .env            # Google Ads credentials
-│       └── README.md       # Usage documentation
+├── thema_ads_optimized/  # Google Ads automation (high-performance async version)
+│   ├── config.py         # Environment-based configuration
+│   ├── models.py         # Data structures
+│   ├── google_ads_client.py  # Client initialization
+│   ├── main_optimized.py     # Async orchestrator
+│   ├── operations/       # API operations (prefetch, ads, labels)
+│   │   ├── prefetch.py
+│   │   ├── ads.py
+│   │   └── labels.py
+│   ├── templates/        # Ad content generators
+│   │   └── generators.py
+│   ├── processors/       # Data loading (Excel/CSV)
+│   │   └── data_loader.py
+│   ├── utils/            # Utilities (cache, retry)
+│   │   ├── cache.py
+│   │   └── retry.py
+│   ├── data/             # Input files (mounted volume)
+│   ├── logs/             # Output logs (mounted volume)
+│   ├── Dockerfile        # Multi-stage build
+│   ├── docker-compose.yml
+│   ├── docker-run.sh     # Helper script
+│   ├── requirements.txt
+│   ├── .env              # Google Ads credentials (git ignored)
+│   ├── .env.example      # Template for environment
+│   └── README.md         # Usage documentation
 ├── backend/
 │   ├── main.py           # FastAPI app with CORS & Thema Ads endpoints
 │   │                     # CSV parsing: empty row handling, dash removal, optional columns
@@ -66,7 +62,7 @@ test2/
 ├── .env.example        # Environment template
 ├── .env                # Local environment (git ignored)
 ├── .gitignore          # Version control excludes
-│                       # Ignores: .env files, thema_ads legacy script, Excel files (*.xlsx, *.xls)
+│                       # Ignores: .env files, Excel files (*.xlsx, *.xls), old thema_ads_project/
 ├── README.md           # Quick start guide
 ├── CLAUDE.md           # Claude Code instructions
 ├── THEMA_ADS_GUIDE.md  # Complete Thema Ads documentation
@@ -230,7 +226,7 @@ python-dotenv==1.0.0      # Environment variable management
 - **URL**: https://github.com/joep-1993/theme_ads
 - **User**: joep-1993 <joepvanschagen34@gmail.com>
 - **Authentication**: SSH (ed25519 key)
-- **Protected Files**: thema_ads_project/thema_ads, *.xlsx, *.xls (in .gitignore)
+- **Protected Files**: .env files, *.xlsx, *.xls, old thema_ads_project/ (all in .gitignore)
 
 ## API Endpoints
 

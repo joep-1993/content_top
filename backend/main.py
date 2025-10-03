@@ -271,7 +271,7 @@ async def discover_ad_groups(
         from dotenv import load_dotenv
 
         # Load environment variables
-        env_path = Path(__file__).parent.parent / "thema_ads_project" / "thema_ads_optimized" / ".env"
+        env_path = Path(__file__).parent.parent / "thema_ads_optimized" / ".env"
         if env_path.exists():
             load_dotenv(env_path)
         else:
