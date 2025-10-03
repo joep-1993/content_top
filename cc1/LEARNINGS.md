@@ -560,5 +560,34 @@ query = f"""
 - **Impact**: Paused ad groups with existing RSAs now correctly processed
 - **Safety**: SD_DONE label on ad groups already ensures idempotency
 
+### Google Ads API 10,000 Operations Per Request Limit
+- **Problem**: Jobs with 20,000+ ad groups fail with "TOO_MANY_MUTATE_OPERATIONS" or "REQUEST_TOO_LARGE"
+- **Root Cause**: Batch operations sent all items in single API request, exceeding 10K operation limit
+- **Error Examples**:
+  - `TOO_MANY_MUTATE_OPERATIONS: Received 20,591 operations, exceeding the maximum of 10000`
+  - `REQUEST_TOO_LARGE: The data written is too large. Split the request into smaller requests`
+- **Impact**: Customers with 10K+ ad groups had 100% failure rate (0 successful, all failed)
+- **Solution**: Chunk all batch operations into groups of 10,000 or less
+```python
+# ❌ BAD: Send all operations in one request
+operations = [build_operation(item) for item in items]  # 20,000 operations
+response = service.mutate(customer_id, operations)  # FAILS
+
+# ✅ GOOD: Chunk operations into batches of 10K
+BATCH_LIMIT = 10000
+all_results = []
+
+for chunk_start in range(0, len(items), BATCH_LIMIT):
+    chunk = items[chunk_start:chunk_start + BATCH_LIMIT]
+    operations = [build_operation(item) for item in chunk]
+    response = service.mutate(customer_id, operations)
+    all_results.extend(response.results)
+```
+- **Applied To**:
+  - Ad creation (`create_rsa_batch`)
+  - Ad labeling (`label_ads_batch`)
+  - Ad group labeling (`label_ad_groups_batch`)
+- **Performance**: Slightly slower (multiple API calls) but prevents total failure for large customers
+
 ---
 _Last updated: 2025-10-03_

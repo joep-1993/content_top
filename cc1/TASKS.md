@@ -14,6 +14,7 @@ _Tasks currently being worked on_
 ## Completed
 _Finished tasks (move here when done)_
 
+- [x] Fix Google Ads API 10K operation limit by chunking batch operations (ads, ad labels, ad group labels) #claude-session:2025-10-03
 - [x] Remove theme label filtering from ad prefetch logic (find existing ads even if they already have BF_2025 label) #claude-session:2025-10-03
 - [x] Add ad_group_name column to CSV export of failed/skipped items for better debugging #claude-session:2025-10-03
 - [x] Add configurable batch_size input field to frontend (CSV and Auto-Discover tabs, default 7500, range 1000-10000) #claude-session:2025-10-02

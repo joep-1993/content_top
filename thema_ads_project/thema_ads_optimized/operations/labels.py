@@ -64,32 +64,46 @@ async def label_ads_batch(
     customer_id: str,
     ad_label_pairs: List[tuple]  # [(ad_group_ad_resource, label_resource), ...]
 ) -> int:
-    """Label multiple ads in batch. Returns count of successful labels."""
+    """Label multiple ads in batch. Returns count of successful labels.
+
+    Google Ads API limits to 10,000 operations per request.
+    This function automatically chunks larger batches.
+    """
 
     def _label():
         if not ad_label_pairs:
             return 0
 
         service = client.get_service("AdGroupAdLabelService")
-        operations = []
+        total_labeled = 0
 
-        for ad_resource, label_resource in ad_label_pairs:
-            op = client.get_type("AdGroupAdLabelOperation")
-            op.create.ad_group_ad = ad_resource
-            op.create.label = label_resource
-            operations.append(op)
+        # Google Ads API limit: 10,000 operations per request
+        BATCH_LIMIT = 10000
 
-        try:
-            response = service.mutate_ad_group_ad_labels(
-                customer_id=customer_id,
-                operations=operations
-            )
-            logger.debug(f"Labeled {len(response.results)} ads")
-            return len(response.results)
+        # Process in chunks
+        for chunk_start in range(0, len(ad_label_pairs), BATCH_LIMIT):
+            chunk = ad_label_pairs[chunk_start:chunk_start + BATCH_LIMIT]
+            operations = []
 
-        except GoogleAdsException as e:
-            logger.warning(f"Some ad labels failed: {e}")
-            return 0
+            for ad_resource, label_resource in chunk:
+                op = client.get_type("AdGroupAdLabelOperation")
+                op.create.ad_group_ad = ad_resource
+                op.create.label = label_resource
+                operations.append(op)
+
+            try:
+                response = service.mutate_ad_group_ad_labels(
+                    customer_id=customer_id,
+                    operations=operations
+                )
+                total_labeled += len(response.results)
+                logger.debug(f"Labeled {len(response.results)} ads in chunk {chunk_start//BATCH_LIMIT + 1}")
+
+            except GoogleAdsException as e:
+                logger.warning(f"Some ad labels failed in chunk {chunk_start//BATCH_LIMIT + 1}: {e}")
+
+        logger.info(f"Labeled {total_labeled} ads total")
+        return total_labeled
 
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _label)
@@ -101,32 +115,46 @@ async def label_ad_groups_batch(
     customer_id: str,
     ad_group_label_pairs: List[tuple]  # [(ad_group_resource, label_resource), ...]
 ) -> int:
-    """Label multiple ad groups in batch. Returns count of successful labels."""
+    """Label multiple ad groups in batch. Returns count of successful labels.
+
+    Google Ads API limits to 10,000 operations per request.
+    This function automatically chunks larger batches.
+    """
 
     def _label():
         if not ad_group_label_pairs:
             return 0
 
         service = client.get_service("AdGroupLabelService")
-        operations = []
+        total_labeled = 0
 
-        for ag_resource, label_resource in ad_group_label_pairs:
-            op = client.get_type("AdGroupLabelOperation")
-            op.create.ad_group = ag_resource
-            op.create.label = label_resource
-            operations.append(op)
+        # Google Ads API limit: 10,000 operations per request
+        BATCH_LIMIT = 10000
 
-        try:
-            response = service.mutate_ad_group_labels(
-                customer_id=customer_id,
-                operations=operations
-            )
-            logger.debug(f"Labeled {len(response.results)} ad groups")
-            return len(response.results)
+        # Process in chunks
+        for chunk_start in range(0, len(ad_group_label_pairs), BATCH_LIMIT):
+            chunk = ad_group_label_pairs[chunk_start:chunk_start + BATCH_LIMIT]
+            operations = []
 
-        except GoogleAdsException as e:
-            logger.warning(f"Some ad group labels failed: {e}")
-            return 0
+            for ag_resource, label_resource in chunk:
+                op = client.get_type("AdGroupLabelOperation")
+                op.create.ad_group = ag_resource
+                op.create.label = label_resource
+                operations.append(op)
+
+            try:
+                response = service.mutate_ad_group_labels(
+                    customer_id=customer_id,
+                    operations=operations
+                )
+                total_labeled += len(response.results)
+                logger.debug(f"Labeled {len(response.results)} ad groups in chunk {chunk_start//BATCH_LIMIT + 1}")
+
+            except GoogleAdsException as e:
+                logger.warning(f"Some ad group labels failed in chunk {chunk_start//BATCH_LIMIT + 1}: {e}")
+
+        logger.info(f"Labeled {total_labeled} ad groups total")
+        return total_labeled
 
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _label)

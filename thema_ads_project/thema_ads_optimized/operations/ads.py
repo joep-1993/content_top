@@ -16,62 +16,77 @@ async def create_rsa_batch(
     customer_id: str,
     ad_data_list: List[dict]  # List of ad configurations
 ) -> List[str]:
-    """Create multiple RSAs in batch. Returns list of resource names."""
+    """Create multiple RSAs in batch. Returns list of resource names.
+
+    Google Ads API limits to 10,000 operations per request.
+    This function automatically chunks larger batches.
+    """
 
     def _create():
         if not ad_data_list:
             return []
 
         service = client.get_service("AdGroupAdService")
-        operations = []
+        all_resource_names = []
 
-        for ad_data in ad_data_list:
-            op = client.get_type("AdGroupAdOperation")
-            aga = op.create
+        # Google Ads API limit: 10,000 operations per request
+        BATCH_LIMIT = 10000
 
-            aga.ad_group = ad_data["ad_group_resource"]
-            aga.status = client.enums.AdGroupAdStatusEnum.PAUSED
+        # Process in chunks
+        for chunk_start in range(0, len(ad_data_list), BATCH_LIMIT):
+            chunk = ad_data_list[chunk_start:chunk_start + BATCH_LIMIT]
+            operations = []
 
-            ad = aga.ad
-            ad.final_urls.append(ad_data["final_url"])
+            for ad_data in chunk:
+                op = client.get_type("AdGroupAdOperation")
+                aga = op.create
 
-            rsa = ad.responsive_search_ad
+                aga.ad_group = ad_data["ad_group_resource"]
+                aga.status = client.enums.AdGroupAdStatusEnum.PAUSED
 
-            # Add headlines
-            for headline in ad_data.get("headlines", [])[:15]:
-                if headline:
-                    asset = client.get_type("AdTextAsset")
-                    asset.text = headline
-                    rsa.headlines.append(asset)
+                ad = aga.ad
+                ad.final_urls.append(ad_data["final_url"])
 
-            # Add descriptions
-            for description in ad_data.get("descriptions", [])[:4]:
-                if description:
-                    asset = client.get_type("AdTextAsset")
-                    asset.text = description
-                    rsa.descriptions.append(asset)
+                rsa = ad.responsive_search_ad
 
-            # Add paths
-            if ad_data.get("path1"):
-                rsa.path1 = ad_data["path1"]
-            if ad_data.get("path2"):
-                rsa.path2 = ad_data["path2"]
+                # Add headlines
+                for headline in ad_data.get("headlines", [])[:15]:
+                    if headline:
+                        asset = client.get_type("AdTextAsset")
+                        asset.text = headline
+                        rsa.headlines.append(asset)
 
-            operations.append(op)
+                # Add descriptions
+                for description in ad_data.get("descriptions", [])[:4]:
+                    if description:
+                        asset = client.get_type("AdTextAsset")
+                        asset.text = description
+                        rsa.descriptions.append(asset)
 
-        try:
-            response = service.mutate_ad_group_ads(
-                customer_id=customer_id,
-                operations=operations
-            )
+                # Add paths
+                if ad_data.get("path1"):
+                    rsa.path1 = ad_data["path1"]
+                if ad_data.get("path2"):
+                    rsa.path2 = ad_data["path2"]
 
-            resource_names = [res.resource_name for res in response.results]
-            logger.info(f"Created {len(resource_names)} RSAs in batch")
-            return resource_names
+                operations.append(op)
 
-        except GoogleAdsException as e:
-            logger.error(f"Failed to create RSAs in batch: {e}")
-            return []
+            try:
+                response = service.mutate_ad_group_ads(
+                    customer_id=customer_id,
+                    operations=operations
+                )
+
+                resource_names = [res.resource_name for res in response.results]
+                all_resource_names.extend(resource_names)
+                logger.info(f"Created {len(resource_names)} RSAs in chunk (batch {chunk_start//BATCH_LIMIT + 1}/{(len(ad_data_list)-1)//BATCH_LIMIT + 1})")
+
+            except GoogleAdsException as e:
+                logger.error(f"Failed to create RSAs in chunk {chunk_start//BATCH_LIMIT + 1}: {e}")
+                # Continue with next chunk instead of failing completely
+
+        logger.info(f"Created {len(all_resource_names)} RSAs total across {(len(ad_data_list)-1)//BATCH_LIMIT + 1} chunks")
+        return all_resource_names
 
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _create)
