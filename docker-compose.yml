@@ -1,5 +1,6 @@
 services:
   app:
+    container_name: content_top_app
     build: .
     ports:
       - "8001:8000"  # Access at http://localhost:8001
@@ -10,21 +11,22 @@ services:
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - AI_MODEL=${AI_MODEL:-gpt-4o-mini}
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/myapp
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/content_top
     depends_on:
       - db
     command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
 
   db:
+    container_name: content_top_db
     image: postgres:15
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: myapp
+      POSTGRES_DB: content_top
     ports:
       - "5433:5432"  # Avoid conflicts with local PostgreSQL
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - content_top_postgres_data:/var/lib/postgresql/data
 
 volumes:
-  postgres_data:
+  content_top_postgres_data:

@@ -14,6 +14,10 @@ docker-compose down -v         # Stop and remove volumes
 docker-compose ps              # Check status
 docker exec -it <container> bash  # Enter container
 
+# Import data from local file into container
+docker cp /path/to/file container_name:/tmp/file
+docker-compose exec -T db psql -U postgres -d dbname -c "COPY table (column) FROM '/tmp/file';"
+
 # Access Frontend
 # Navigate to http://localhost:8001/static/index.html
 ```
@@ -33,6 +37,12 @@ docker exec -it <container> bash  # Enter container
 - Wait for PostgreSQL to fully start
 - Check DATABASE_URL in .env
 - Run `docker-compose logs db` to debug
+
+### Database Schema Column Missing
+- **Error**: `column "status" does not exist`
+- **Cause**: Schema changes applied to wrong database (postgres vs content_top)
+- **Solution**: Check DATABASE_URL in docker-compose.yml, apply schema to correct database
+- **Command**: `docker-compose exec -T db psql -U postgres -d content_top < backend/schema.sql`
 
 ### OpenAI httpx Compatibility
 - **Error**: `TypeError: Client.__init__() got an unexpected keyword argument 'proxies'`
@@ -114,6 +124,15 @@ api_key = os.getenv("OPENAI_API_KEY")
   3. Update docker-compose and .gitignore
   4. Create new repository for separated project
   5. Copy files and create independent git history
+
+### Parallel URL Processing with ThreadPoolExecutor
+- **Pattern**: Process multiple URLs concurrently using Python's ThreadPoolExecutor
+- **Benefit**: Significant speed improvement for I/O-bound tasks (scraping + AI)
+- **Implementation**: Each worker gets own DB connection, configurable 1-10 workers
+```python
+with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
+    results = list(executor.map(process_single_url, urls))
+```
 
 ---
 _Last updated: 2025-10-03_

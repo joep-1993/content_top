@@ -10,6 +10,12 @@ _Tasks currently being worked on_
 ## Completed
 _Finished tasks (move here when done)_
 
+- [x] Add parallel processing with configurable workers (1-10) #claude-session:2025-10-03
+- [x] Add upload URLs functionality with duplicate detection #claude-session:2025-10-03
+- [x] Add export functionality (CSV/JSON) #claude-session:2025-10-03
+- [x] Add delete result and reset to pending functionality #claude-session:2025-10-03
+- [x] Track skipped/failed URLs separately from pending #claude-session:2025-10-03
+- [x] Add expandable full content view in Recent Results #claude-session:2025-10-03
 - [x] Separate content_top and theme_ads into independent repositories #claude-session:2025-10-03
 - [x] Create frontend interface on http://localhost:8001/static/index.html with batch processing #claude-session:2025-10-03
 - [x] Add "Process All URLs" button with progress tracking and stop functionality #claude-session:2025-10-03

@@ -1,7 +1,13 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import StreamingResponse
 from datetime import datetime
+from io import StringIO
+import csv
+import json
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from backend.database import get_db_connection
 from backend.scraper_service import scrape_product_page, sanitize_content
 from backend.gpt_service import generate_product_content, check_content_has_valid_links
@@ -42,24 +48,145 @@ async def generate_text(prompt: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/process-urls")
-async def process_urls():
-    """
-    Process batch of URLs for SEO content generation.
-    Fetches 2 URLs at a time, scrapes content, generates AI text, and saves to database.
-    """
+def process_single_url(url: str):
+    """Process a single URL - runs in thread pool"""
+    result = {"url": url, "status": "pending"}
     conn = None
+
     try:
         conn = get_db_connection()
         cur = conn.cursor()
 
-        # Get 2 unprocessed URLs
+        # Add to tracking table
+        cur.execute("""
+            INSERT INTO pa.jvs_seo_werkvoorraad_kopteksten_check (url, status)
+            VALUES (%s, 'pending')
+        """, (url,))
+        conn.commit()
+
+        # Scrape the URL
+        scraped_data = scrape_product_page(url)
+
+        if not scraped_data:
+            # Update status to failed
+            cur.execute("""
+                UPDATE pa.jvs_seo_werkvoorraad_kopteksten_check
+                SET status = 'failed', skip_reason = 'scraping_failed'
+                WHERE url = %s
+            """, (url,))
+            conn.commit()
+            result["status"] = "failed"
+            result["reason"] = "scraping_failed"
+            return result
+
+        # Check if products found
+        if not scraped_data['products'] or len(scraped_data['products']) == 0:
+            # Update status to skipped
+            cur.execute("""
+                UPDATE pa.jvs_seo_werkvoorraad_kopteksten_check
+                SET status = 'skipped', skip_reason = 'no_products_found'
+                WHERE url = %s
+            """, (url,))
+            conn.commit()
+            result["status"] = "skipped"
+            result["reason"] = "no_products_found"
+            return result
+
+        # Generate AI content
+        try:
+            ai_content = generate_product_content(
+                scraped_data['h1_title'],
+                scraped_data['products']
+            )
+
+            # Sanitize content for SQL
+            sanitized = sanitize_content(ai_content)
+
+            # Check if content has valid links
+            if not check_content_has_valid_links(ai_content):
+                # Update status to failed
+                cur.execute("""
+                    UPDATE pa.jvs_seo_werkvoorraad_kopteksten_check
+                    SET status = 'failed', skip_reason = 'no_valid_links'
+                    WHERE url = %s
+                """, (url,))
+                conn.commit()
+                result["status"] = "failed"
+                result["reason"] = "no_valid_links"
+                return result
+
+            # Write to output table
+            cur.execute("""
+                INSERT INTO pa.content_urls_joep (url, content)
+                VALUES (%s, %s)
+            """, (url, sanitized))
+
+            # Update werkvoorraad
+            cur.execute("""
+                UPDATE pa.jvs_seo_werkvoorraad
+                SET kopteksten = 1
+                WHERE url = %s
+            """, (url,))
+
+            # Update status to success
+            cur.execute("""
+                UPDATE pa.jvs_seo_werkvoorraad_kopteksten_check
+                SET status = 'success'
+                WHERE url = %s
+            """, (url,))
+
+            conn.commit()
+            result["status"] = "success"
+            result["content_preview"] = ai_content[:100] + "..."
+            return result
+
+        except Exception as e:
+            # Update status to failed
+            cur.execute("""
+                UPDATE pa.jvs_seo_werkvoorraad_kopteksten_check
+                SET status = 'failed', skip_reason = %s
+                WHERE url = %s
+            """, (f"ai_generation_error: {str(e)}", url))
+            conn.commit()
+            result["status"] = "failed"
+            result["reason"] = f"ai_generation_error: {str(e)}"
+            return result
+
+    except Exception as e:
+        result["status"] = "failed"
+        result["reason"] = f"error: {str(e)}"
+        return result
+    finally:
+        if conn:
+            cur.close()
+            conn.close()
+
+@app.post("/api/process-urls")
+async def process_urls(batch_size: int = 2, parallel_workers: int = 1):
+    """
+    Process batch of URLs for SEO content generation.
+    Fetches specified number of URLs, scrapes content, generates AI text, and saves to database.
+    Supports parallel processing with configurable workers.
+    """
+    try:
+        # Validate parameters
+        if batch_size < 1 or batch_size > 100:
+            raise HTTPException(status_code=400, detail="Batch size must be between 1 and 100")
+
+        if parallel_workers < 1 or parallel_workers > 10:
+            raise HTTPException(status_code=400, detail="Parallel workers must be between 1 and 10")
+
+        # Get unprocessed URLs
+        conn = get_db_connection()
+        cur = conn.cursor()
         cur.execute("""
             SELECT url FROM pa.jvs_seo_werkvoorraad
             WHERE url NOT IN (SELECT url FROM pa.jvs_seo_werkvoorraad_kopteksten_check)
-            LIMIT 2
-        """)
+            LIMIT %s
+        """, (batch_size,))
         rows = cur.fetchall()
+        cur.close()
+        conn.close()
 
         if not rows:
             return {
@@ -68,108 +195,23 @@ async def process_urls():
                 "processed": 0
             }
 
-        results = []
-        processed_count = 0
+        urls = [row['url'] for row in rows]
 
-        for row in rows:
-            url = row['url']
+        # Process URLs in parallel using ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
+            results = list(executor.map(process_single_url, urls))
 
-            # Add to tracking table
-            cur.execute("""
-                INSERT INTO pa.jvs_seo_werkvoorraad_kopteksten_check (url)
-                VALUES (%s)
-            """, (url,))
-            conn.commit()
-
-            # Scrape the URL
-            scraped_data = scrape_product_page(url)
-
-            if not scraped_data:
-                results.append({
-                    "url": url,
-                    "status": "failed",
-                    "reason": "scraping_failed"
-                })
-                continue
-
-            # Check if products found
-            if not scraped_data['products'] or len(scraped_data['products']) == 0:
-                results.append({
-                    "url": url,
-                    "status": "skipped",
-                    "reason": "no_products_found"
-                })
-                continue
-
-            # Generate AI content
-            try:
-                ai_content = generate_product_content(
-                    scraped_data['h1_title'],
-                    scraped_data['products']
-                )
-
-                # Sanitize content for SQL
-                sanitized = sanitize_content(ai_content)
-
-                # Check if content has valid links
-                if not check_content_has_valid_links(ai_content):
-                    # Remove from check table if invalid
-                    cur.execute("""
-                        DELETE FROM pa.jvs_seo_werkvoorraad_kopteksten_check
-                        WHERE url = %s
-                    """, (url,))
-                    conn.commit()
-
-                    results.append({
-                        "url": url,
-                        "status": "failed",
-                        "reason": "no_valid_links"
-                    })
-                    continue
-
-                # Write to output table
-                cur.execute("""
-                    INSERT INTO pa.content_urls_joep (url, content)
-                    VALUES (%s, %s)
-                """, (url, sanitized))
-
-                # Update werkvoorraad
-                cur.execute("""
-                    UPDATE pa.jvs_seo_werkvoorraad
-                    SET kopteksten = 1
-                    WHERE url = %s
-                """, (url,))
-
-                conn.commit()
-                processed_count += 1
-
-                results.append({
-                    "url": url,
-                    "status": "success",
-                    "content_preview": ai_content[:100] + "..."
-                })
-
-            except Exception as e:
-                results.append({
-                    "url": url,
-                    "status": "failed",
-                    "reason": f"ai_generation_error: {str(e)}"
-                })
-
-        cur.close()
+        processed_count = sum(1 for r in results if r['status'] == 'success')
 
         return {
             "status": "success",
             "processed": processed_count,
-            "total_attempted": len(rows),
+            "total_attempted": len(urls),
             "results": results
         }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        if conn:
-            conn.close()
 
 @app.get("/api/status")
 async def get_status():
@@ -182,11 +224,27 @@ async def get_status():
         cur.execute("SELECT COUNT(*) as total FROM pa.jvs_seo_werkvoorraad")
         total = cur.fetchone()['total']
 
-        # Get processed URLs
+        # Get processed URLs (successful)
         cur.execute("SELECT COUNT(*) as processed FROM pa.jvs_seo_werkvoorraad WHERE kopteksten = 1")
         processed = cur.fetchone()['processed']
 
-        # Get pending URLs
+        # Get skipped URLs
+        cur.execute("""
+            SELECT COUNT(*) as skipped
+            FROM pa.jvs_seo_werkvoorraad_kopteksten_check
+            WHERE status = 'skipped'
+        """)
+        skipped = cur.fetchone()['skipped']
+
+        # Get failed URLs
+        cur.execute("""
+            SELECT COUNT(*) as failed
+            FROM pa.jvs_seo_werkvoorraad_kopteksten_check
+            WHERE status = 'failed'
+        """)
+        failed = cur.fetchone()['failed']
+
+        # Get pending URLs (not yet attempted)
         cur.execute("""
             SELECT COUNT(*) as pending FROM pa.jvs_seo_werkvoorraad
             WHERE url NOT IN (SELECT url FROM pa.jvs_seo_werkvoorraad_kopteksten_check)
@@ -208,8 +266,175 @@ async def get_status():
         return {
             "total_urls": total,
             "processed": processed,
+            "skipped": skipped,
+            "failed": failed,
             "pending": pending,
             "recent_results": recent
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/export/csv")
+async def export_csv():
+    """Export all generated content as CSV"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT url, content, created_at
+            FROM pa.content_urls_joep
+            ORDER BY created_at DESC
+        """)
+        rows = cur.fetchall()
+
+        cur.close()
+        conn.close()
+
+        # Create CSV in memory
+        output = StringIO()
+        writer = csv.writer(output)
+        writer.writerow(['URL', 'Content', 'Created At'])
+
+        for row in rows:
+            writer.writerow([row['url'], row['content'], row['created_at']])
+
+        # Return as downloadable file
+        output.seek(0)
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=content_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"}
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/export/json")
+async def export_json():
+    """Export all generated content as JSON"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT url, content, created_at
+            FROM pa.content_urls_joep
+            ORDER BY created_at DESC
+        """)
+        rows = cur.fetchall()
+
+        cur.close()
+        conn.close()
+
+        # Convert to JSON-serializable format
+        data = []
+        for row in rows:
+            data.append({
+                'url': row['url'],
+                'content': row['content'],
+                'created_at': row['created_at'].isoformat() if row['created_at'] else None
+            })
+
+        # Return as downloadable file
+        json_str = json.dumps(data, indent=2, ensure_ascii=False)
+        return StreamingResponse(
+            iter([json_str]),
+            media_type="application/json",
+            headers={"Content-Disposition": f"attachment; filename=content_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"}
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/upload-urls")
+async def upload_urls(file: UploadFile = File(...)):
+    """Upload a text file with URLs (one per line) to add to the work queue"""
+    try:
+        # Read file content
+        content = await file.read()
+        urls = content.decode('utf-8').strip().split('\n')
+
+        # Filter empty lines
+        urls = [url.strip() for url in urls if url.strip()]
+
+        if not urls:
+            raise HTTPException(status_code=400, detail="No URLs found in file")
+
+        # Insert URLs into database (ignore duplicates)
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        added_count = 0
+        duplicate_count = 0
+
+        for url in urls:
+            try:
+                cur.execute("""
+                    INSERT INTO pa.jvs_seo_werkvoorraad (url)
+                    VALUES (%s)
+                    ON CONFLICT (url) DO NOTHING
+                """, (url,))
+
+                if cur.rowcount > 0:
+                    added_count += 1
+                else:
+                    duplicate_count += 1
+
+            except Exception as e:
+                # Skip invalid URLs
+                continue
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        return {
+            "status": "success",
+            "total_urls": len(urls),
+            "added": added_count,
+            "duplicates": duplicate_count,
+            "message": f"Added {added_count} new URLs, {duplicate_count} duplicates skipped"
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/result/{url:path}")
+async def delete_result(url: str):
+    """Delete a result and reset the URL back to pending state"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # Delete from content_urls_joep (generated content)
+        cur.execute("""
+            DELETE FROM pa.content_urls_joep
+            WHERE url = %s
+        """, (url,))
+
+        # Delete from tracking table
+        cur.execute("""
+            DELETE FROM pa.jvs_seo_werkvoorraad_kopteksten_check
+            WHERE url = %s
+        """, (url,))
+
+        # Reset kopteksten flag in work queue
+        cur.execute("""
+            UPDATE pa.jvs_seo_werkvoorraad
+            SET kopteksten = 0
+            WHERE url = %s
+        """, (url,))
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        return {
+            "status": "success",
+            "message": f"Result deleted and URL reset to pending",
+            "url": url
         }
 
     except Exception as e:

@@ -57,13 +57,27 @@ let shouldStop = false;
 async function processUrls() {
     const btn = document.getElementById('processBtn');
     const resultDiv = document.getElementById('processResult');
+    const batchSizeInput = document.getElementById('batchSizeInput');
+    const parallelWorkersInput = document.getElementById('parallelWorkersInput');
+    const batchSize = parseInt(batchSizeInput.value) || 10;
+    const parallelWorkers = parseInt(parallelWorkersInput.value) || 1;
+
+    if (batchSize < 1 || batchSize > 100) {
+        alert('Batch size must be between 1 and 100');
+        return;
+    }
+
+    if (parallelWorkers < 1 || parallelWorkers > 10) {
+        alert('Parallel workers must be between 1 and 10');
+        return;
+    }
 
     btn.disabled = true;
     btn.textContent = 'Processing...';
-    resultDiv.innerHTML = '<div class="alert alert-info">Processing URLs... This may take a minute.</div>';
+    resultDiv.innerHTML = `<div class="alert alert-info">Processing ${batchSize} URL(s) with ${parallelWorkers} parallel worker(s)...</div>`;
 
     try {
-        const response = await fetch(`${API_BASE}/api/process-urls`, {
+        const response = await fetch(`${API_BASE}/api/process-urls?batch_size=${batchSize}&parallel_workers=${parallelWorkers}`, {
             method: 'POST'
         });
 
@@ -79,12 +93,12 @@ async function processUrls() {
         } else {
             let resultsHtml = `
                 <div class="alert alert-success">
-                    <strong>Processed ${data.processed} of ${data.total_attempted} URLs</strong>
+                    <strong>Processed ${data.processed || 0} of ${data.total_attempted || 0} URLs</strong>
                 </div>
                 <ul class="list-group mt-2">
             `;
 
-            data.results.forEach(r => {
+            (data.results || []).forEach(r => {
                 let badgeClass = r.status === 'success' ? 'success' :
                                r.status === 'skipped' ? 'warning' : 'danger';
                 resultsHtml += `
@@ -108,7 +122,7 @@ async function processUrls() {
         resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
     } finally {
         btn.disabled = false;
-        btn.textContent = 'Process 2 URLs';
+        btn.textContent = 'Process URLs';
     }
 }
 
@@ -121,6 +135,10 @@ async function processAllUrls() {
     const progressText = document.getElementById('progressText');
     const progressPercent = document.getElementById('progressPercent');
     const resultDiv = document.getElementById('processResult');
+    const batchSizeInput = document.getElementById('batchSizeInput');
+    const parallelWorkersInput = document.getElementById('parallelWorkersInput');
+    const batchSize = parseInt(batchSizeInput.value) || 10;
+    const parallelWorkers = parseInt(parallelWorkersInput.value) || 1;
 
     // Disable buttons and show stop button
     processBtn.disabled = true;
@@ -153,9 +171,9 @@ async function processAllUrls() {
             batchCount++;
 
             // Update progress text
-            progressText.textContent = `Batch ${batchCount} - Processing...`;
+            progressText.textContent = `Batch ${batchCount} - Processing ${batchSize} URLs with ${parallelWorkers} workers...`;
 
-            const response = await fetch(`${API_BASE}/api/process-urls`, {
+            const response = await fetch(`${API_BASE}/api/process-urls?batch_size=${batchSize}&parallel_workers=${parallelWorkers}`, {
                 method: 'POST'
             });
 
@@ -238,20 +256,43 @@ async function refreshStatus() {
 
         document.getElementById('totalUrls').textContent = data.total_urls;
         document.getElementById('processedUrls').textContent = data.processed;
+        document.getElementById('skippedUrls').textContent = data.skipped || 0;
+        document.getElementById('failedUrls').textContent = data.failed || 0;
         document.getElementById('pendingUrls').textContent = data.pending;
 
         // Display recent results
         const recentDiv = document.getElementById('recentResults');
         if (data.recent_results && data.recent_results.length > 0) {
             let html = '';
-            data.recent_results.forEach(item => {
+            data.recent_results.forEach((item, index) => {
+                const shortContent = item.content.substring(0, 150);
+                const fullContent = item.content;
+                const needsExpand = fullContent.length > 150;
+
                 html += `
-                    <div class="list-group-item">
-                        <div class="d-flex w-100 justify-content-between">
-                            <h6 class="mb-1">${item.url}</h6>
-                            <small>${new Date(item.created_at).toLocaleString()}</small>
+                    <div class="list-group-item" id="result-item-${index}">
+                        <div class="d-flex w-100 justify-content-between align-items-start">
+                            <div style="flex: 1;">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <h6 class="mb-1 text-truncate" style="max-width: 70%;" title="${item.url}">${item.url}</h6>
+                                    <small class="text-muted">${new Date(item.created_at).toLocaleString()}</small>
+                                </div>
+                                <div class="content-preview">
+                                    <p class="mb-1 small" id="preview-${index}">${shortContent}${needsExpand ? '...' : ''}</p>
+                                    ${needsExpand ? `
+                                        <div class="full-content d-none" id="full-${index}">
+                                            <p class="mb-1 small">${fullContent}</p>
+                                        </div>
+                                        <button class="btn btn-sm btn-link p-0" onclick="toggleContent(${index})">
+                                            <span id="toggle-text-${index}">View Full Content</span>
+                                        </button>
+                                    ` : ''}
+                                </div>
+                            </div>
+                            <button class="btn btn-sm btn-danger ms-2" onclick="deleteResult('${item.url}', ${index})" title="Delete and reset to pending">
+                                ×
+                            </button>
                         </div>
-                        <p class="mb-1 small">${item.content.substring(0, 150)}...</p>
                     </div>
                 `;
             });
@@ -267,3 +308,128 @@ async function refreshStatus() {
 
 // Auto-refresh status every 30 seconds
 setInterval(checkStatus, 30000);
+
+// Upload URLs function
+async function uploadUrls() {
+    const fileInput = document.getElementById('urlFileInput');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const resultDiv = document.getElementById('uploadResult');
+
+    if (!fileInput.files || fileInput.files.length === 0) {
+        resultDiv.innerHTML = '<div class="alert alert-warning">Please select a file</div>';
+        return;
+    }
+
+    const file = fileInput.files[0];
+
+    uploadBtn.disabled = true;
+    uploadBtn.textContent = 'Uploading...';
+    resultDiv.innerHTML = '<div class="alert alert-info">Uploading URLs...</div>';
+
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await fetch(`${API_BASE}/api/upload-urls`, {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            resultDiv.innerHTML = `
+                <div class="alert alert-success">
+                    <strong>${data.message}</strong><br>
+                    Total URLs in file: ${data.total_urls}<br>
+                    New URLs added: ${data.added}<br>
+                    Duplicates skipped: ${data.duplicates}
+                </div>
+            `;
+            // Clear file input
+            fileInput.value = '';
+            // Refresh status
+            refreshStatus();
+        } else {
+            resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.detail}</div>`;
+        }
+
+    } catch (error) {
+        resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+    } finally {
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = 'Upload URLs';
+    }
+}
+
+// Toggle content visibility
+function toggleContent(index) {
+    const preview = document.getElementById(`preview-${index}`);
+    const full = document.getElementById(`full-${index}`);
+    const toggleText = document.getElementById(`toggle-text-${index}`);
+
+    if (full.classList.contains('d-none')) {
+        preview.classList.add('d-none');
+        full.classList.remove('d-none');
+        toggleText.textContent = 'Show Less';
+    } else {
+        preview.classList.remove('d-none');
+        full.classList.add('d-none');
+        toggleText.textContent = 'View Full Content';
+    }
+}
+
+// Delete result and reset URL to pending
+async function deleteResult(url, index) {
+    if (!confirm(`Delete this result and reset the URL to pending?\n\n${url}`)) {
+        return;
+    }
+
+    try {
+        const encodedUrl = encodeURIComponent(url);
+        const response = await fetch(`${API_BASE}/api/result/${encodedUrl}`, {
+            method: 'DELETE'
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            // Remove the item from the DOM
+            const item = document.getElementById(`result-item-${index}`);
+            if (item) {
+                item.remove();
+            }
+
+            // Refresh status to update counts
+            await refreshStatus();
+
+            // Show success message briefly
+            const recentDiv = document.getElementById('recentResults');
+            if (recentDiv.children.length === 0) {
+                recentDiv.innerHTML = '<p class="text-muted">No results yet</p>';
+            }
+        } else {
+            alert(`Error: ${data.detail || 'Failed to delete result'}`);
+        }
+
+    } catch (error) {
+        alert(`Error: ${error.message}`);
+    }
+}
+
+// Export functions
+async function exportCSV() {
+    try {
+        window.location.href = `${API_BASE}/api/export/csv`;
+    } catch (error) {
+        alert(`Export failed: ${error.message}`);
+    }
+}
+
+async function exportJSON() {
+    try {
+        window.location.href = `${API_BASE}/api/export/json`;
+    } catch (error) {
+        alert(`Export failed: ${error.message}`);
+    }
+}

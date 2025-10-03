@@ -2,7 +2,7 @@
 _Project structure and technical specs. Update when: creating files, adding dependencies, defining schemas._
 
 ## Stack
-Backend: FastAPI (Python 3.11) | Frontend: Bootstrap 5 + Vanilla JS | Database: PostgreSQL 15 | AI: OpenAI API | Deploy: Docker + docker-compose | Google Ads: AsyncIO + Batch API (v28) | Automation: Docker multi-stage builds
+Backend: FastAPI (Python 3.11, ThreadPoolExecutor for parallel processing) | Frontend: Bootstrap 5 + Vanilla JS | Database: PostgreSQL 15 | AI: OpenAI API | Deploy: Docker + docker-compose | Google Ads: AsyncIO + Batch API (v28) | Automation: Docker multi-stage builds
 
 ## Directory Structure
 ```
@@ -68,7 +68,8 @@ test2/
 ├── THEMA_ADS_GUIDE.md  # Complete Thema Ads documentation
 ├── START_HERE.md       # Quick start for web interface
 ├── start-thema-ads.sh  # Automated setup script
-└── sample_input.csv    # Example CSV for Thema Ads upload
+├── sample_input.csv    # Example CSV for Thema Ads upload
+└── seo_urls            # Input file with URLs to process (75,858 URLs)
 ```
 
 ## Environment Variables
@@ -187,10 +188,27 @@ CREATE TABLE thema_ads_input_data (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- SEO workflow tables (existing)
-CREATE TABLE pa.jvs_seo_werkvoorraad (...);
-CREATE TABLE pa.jvs_seo_werkvoorraad_kopteksten_check (...);
-CREATE TABLE pa.content_urls_joep (...);
+-- SEO workflow tables
+CREATE TABLE pa.jvs_seo_werkvoorraad (
+    url VARCHAR(500) PRIMARY KEY,
+    kopteksten INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Tracking table with status tracking
+CREATE TABLE pa.jvs_seo_werkvoorraad_kopteksten_check (
+    url VARCHAR(500) PRIMARY KEY,
+    status VARCHAR(50) DEFAULT 'pending',  -- 'success', 'skipped', 'failed'
+    skip_reason VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE pa.content_urls_joep (
+    id SERIAL PRIMARY KEY,
+    url VARCHAR(500) NOT NULL,
+    content TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 ```
 
 ## Dependencies
@@ -237,8 +255,12 @@ python-dotenv==1.0.0      # Environment variable management
 - `GET /static/*` - Frontend files
 
 ### SEO Workflow
-- `POST /api/process-urls` - Process batch of URLs for SEO content
-- `GET /api/status` - Get SEO processing status
+- `POST /api/process-urls?batch_size=10&parallel_workers=3` - Process URLs with parallel workers (batch_size: 1-100, parallel_workers: 1-10)
+- `GET /api/status` - Get SEO processing status (includes total, processed, skipped, failed, pending counts)
+- `POST /api/upload-urls` - Upload text file with URLs (one per line, duplicates skipped)
+- `DELETE /api/result/{url}` - Delete result and reset URL to pending
+- `GET /api/export/csv` - Export all generated content as CSV
+- `GET /api/export/json` - Export all generated content as JSON
 
 ### Labels Applied by Thema Ads
 **Ad Groups get labeled with:**
@@ -333,4 +355,4 @@ Frontend has two tabs:
   - Original error message for actual failures
 
 ---
-_Last updated: 2025-10-02_
+_Last updated: 2025-10-03_
