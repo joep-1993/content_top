@@ -14,6 +14,7 @@ _Tasks currently being worked on_
 ## Completed
 _Finished tasks (move here when done)_
 
+- [x] Optimize auto-discovery with direct ad query (74% fewer API queries: 271→71 for 146k ad groups) #claude-session:2025-10-03
 - [x] Merge thema_ads_project and thema_ads_optimized directories into single thema_ads_optimized/ structure #claude-session:2025-10-03
 - [x] Increase discovery timeout from 2 to 10 minutes for large account discovery (100K+ ad groups) #claude-session:2025-10-03
 - [x] Use configurable batch_size in discovery SD_DONE label checks instead of hardcoded 5000 #claude-session:2025-10-03

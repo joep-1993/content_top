@@ -288,9 +288,10 @@ Frontend has two tabs:
 - Returns discovered ad groups and automatically starts processing
 
 **Performance:**
-- Batched label checking: ~30 API calls for 146k ad groups (vs 146k individual calls)
+- Direct ad query with cross-resource filtering: 74% fewer API queries (271→71 for 146k ad groups)
+- Batched label checking: ~20 API calls for 146k ad groups (vs 146k individual calls)
 - Default batch size: 7,500 ad groups per query (user-configurable)
-- Discovery time: ~1-2 minutes for full account scan
+- Discovery time: ~30-60 seconds for full account scan (optimized from 2+ minutes)
 
 #### CSV Format
 **Minimum columns** (campaign info fetched at runtime):

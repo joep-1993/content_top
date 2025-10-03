@@ -314,118 +314,128 @@ async def discover_ad_groups(
 
         logger.info(f"Found {len(beslist_customers)} Beslist.nl accounts")
 
-        # For each customer, find campaigns starting with HS/ and their ad groups
+        # Query ads directly with campaign filter for faster discovery
         input_data = []
+        ad_group_map = {}  # Deduplicate: ad_group_resource -> {customer_id, campaign_id, campaign_name, ad_group_id}
 
         for customer in beslist_customers:
             customer_id = customer['id']
             logger.info(f"Processing customer {customer_id}: {customer['name']}")
 
-            # Find campaigns starting with HS/
-            campaign_query = """
-                SELECT
-                    campaign.id,
-                    campaign.name,
-                    campaign.resource_name
-                FROM campaign
-                WHERE campaign.name LIKE 'HS/%'
-                AND campaign.status = 'ENABLED'
-            """
-
             try:
-                campaign_response = ga_service.search(customer_id=customer_id, query=campaign_query)
+                # Direct ad query with campaign.name filter (much faster than nested queries)
+                ad_query = """
+                    SELECT
+                        ad_group_ad.ad_group,
+                        ad_group.id,
+                        ad_group.name,
+                        campaign.id,
+                        campaign.name
+                    FROM ad_group_ad
+                    WHERE campaign.name LIKE 'HS/%'
+                    AND ad_group_ad.ad.type = RESPONSIVE_SEARCH_AD
+                    AND ad_group_ad.status != REMOVED
+                    AND ad_group.status = 'ENABLED'
+                    AND campaign.status = 'ENABLED'
+                """
 
-                for camp_row in campaign_response:
-                    campaign_id = str(camp_row.campaign.id)
-                    campaign_name = camp_row.campaign.name
-                    campaign_resource = camp_row.campaign.resource_name
+                ad_response = ga_service.search(customer_id=customer_id, query=ad_query)
 
-                    logger.info(f"  Found campaign: {campaign_name}")
+                # Deduplicate by ad_group (multiple ads per ad group)
+                for row in ad_response:
+                    ag_resource = row.ad_group_ad.ad_group
 
-                    # Find ad groups in this campaign
-                    ag_query = f"""
-                        SELECT
-                            ad_group.id,
-                            ad_group.name,
-                            ad_group.resource_name
-                        FROM ad_group
-                        WHERE ad_group.campaign = '{campaign_resource}'
-                        AND ad_group.status = 'ENABLED'
-                    """
+                    # Only store first occurrence of each ad group
+                    if ag_resource not in ad_group_map:
+                        ad_group_map[ag_resource] = {
+                            'customer_id': customer_id,
+                            'campaign_id': str(row.campaign.id),
+                            'campaign_name': row.campaign.name,
+                            'ad_group_id': str(row.ad_group.id),
+                            'ad_group_resource': ag_resource
+                        }
 
-                    ag_response = ga_service.search(customer_id=customer_id, query=ag_query)
-                    ad_groups = [(str(row.ad_group.id), row.ad_group.resource_name) for row in ag_response]
-
-                    if not ad_groups:
-                        continue
-
-                    logger.info(f"    Found {len(ad_groups)} ad groups")
-
-                    # Batch query: Get all ad groups that have SD_DONE label
-                    ad_group_resources = [ag[1] for ag in ad_groups]
-                    ag_with_sd_done = set()
-
-                    # Get SD_DONE label resource
-                    sd_done_query = """
-                        SELECT label.resource_name
-                        FROM label
-                        WHERE label.name = 'SD_DONE'
-                        LIMIT 1
-                    """
-                    try:
-                        sd_label_response = ga_service.search(customer_id=customer_id, query=sd_done_query)
-                        sd_done_resource = None
-                        for row in sd_label_response:
-                            sd_done_resource = row.label.resource_name
-                            break
-
-                        if sd_done_resource:
-                            # Batch query in chunks using configured batch_size
-                            for i in range(0, len(ad_group_resources), batch_size):
-                                batch = ad_group_resources[i:i + batch_size]
-                                resources_str = ", ".join(f"'{r}'" for r in batch)
-
-                                label_check_query = f"""
-                                    SELECT ad_group_label.ad_group
-                                    FROM ad_group_label
-                                    WHERE ad_group_label.ad_group IN ({resources_str})
-                                    AND ad_group_label.label = '{sd_done_resource}'
-                                """
-
-                                label_response = ga_service.search(customer_id=customer_id, query=label_check_query)
-                                for row in label_response:
-                                    ag_with_sd_done.add(row.ad_group_label.ad_group)
-
-                    except Exception as e:
-                        logger.warning(f"    Could not check SD_DONE labels: {e}")
-
-                    # Add ad groups that don't have SD_DONE label
-                    for ag_id, ag_resource in ad_groups:
-                        if ag_resource not in ag_with_sd_done:
-                            input_data.append({
-                                'customer_id': customer_id,
-                                'campaign_id': campaign_id,
-                                'campaign_name': campaign_name,
-                                'ad_group_id': ag_id
-                            })
-
-                            # Check limit
-                            if limit and len(input_data) >= limit:
-                                logger.info(f"Reached limit of {limit} ad groups")
-                                break
-
-                    # Check limit after each campaign
-                    if limit and len(input_data) >= limit:
-                        break
+                logger.info(f"  Found {len([ag for ag in ad_group_map.values() if ag['customer_id'] == customer_id])} unique ad groups")
 
             except Exception as e:
                 logger.warning(f"Error processing customer {customer_id}: {e}")
                 continue
 
-            # Check limit after each customer
-            if limit and len(input_data) >= limit:
-                logger.info(f"Reached limit of {limit} ad groups, stopping discovery")
-                break
+        # Get all unique ad group resources across all customers
+        ad_group_resources = list(ad_group_map.keys())
+        logger.info(f"Total unique ad groups across all customers: {len(ad_group_resources)}")
+
+        if not ad_group_resources:
+            return {
+                "status": "no_ad_groups_found",
+                "message": "No ad groups found matching the criteria",
+                "total_items": 0,
+                "customers_found": len(beslist_customers)
+            }
+
+        # Batch check SD_DONE labels (group by customer for API efficiency)
+        ag_with_sd_done = set()
+
+        for customer in beslist_customers:
+            customer_id = customer['id']
+
+            # Get ad groups for this customer
+            customer_ag_resources = [
+                ag_resource for ag_resource, ag_data in ad_group_map.items()
+                if ag_data['customer_id'] == customer_id
+            ]
+
+            if not customer_ag_resources:
+                continue
+
+            # Get SD_DONE label resource
+            sd_done_query = """
+                SELECT label.resource_name
+                FROM label
+                WHERE label.name = 'SD_DONE'
+                LIMIT 1
+            """
+            try:
+                sd_label_response = ga_service.search(customer_id=customer_id, query=sd_done_query)
+                sd_done_resource = None
+                for row in sd_label_response:
+                    sd_done_resource = row.label.resource_name
+                    break
+
+                if sd_done_resource:
+                    # Batch query in chunks using configured batch_size
+                    for i in range(0, len(customer_ag_resources), batch_size):
+                        batch = customer_ag_resources[i:i + batch_size]
+                        resources_str = ", ".join(f"'{r}'" for r in batch)
+
+                        label_check_query = f"""
+                            SELECT ad_group_label.ad_group
+                            FROM ad_group_label
+                            WHERE ad_group_label.ad_group IN ({resources_str})
+                            AND ad_group_label.label = '{sd_done_resource}'
+                        """
+
+                        label_response = ga_service.search(customer_id=customer_id, query=label_check_query)
+                        for row in label_response:
+                            ag_with_sd_done.add(row.ad_group_label.ad_group)
+
+            except Exception as e:
+                logger.warning(f"  Could not check SD_DONE labels for customer {customer_id}: {e}")
+
+        # Build input data from ad groups without SD_DONE label
+        for ag_resource, ag_data in ad_group_map.items():
+            if ag_resource not in ag_with_sd_done:
+                input_data.append({
+                    'customer_id': ag_data['customer_id'],
+                    'campaign_id': ag_data['campaign_id'],
+                    'campaign_name': ag_data['campaign_name'],
+                    'ad_group_id': ag_data['ad_group_id']
+                })
+
+                # Check limit
+                if limit and len(input_data) >= limit:
+                    logger.info(f"Reached limit of {limit} ad groups")
+                    break
 
         logger.info(f"Discovered {len(input_data)} ad groups to process")
 

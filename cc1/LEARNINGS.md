@@ -589,5 +589,48 @@ for chunk_start in range(0, len(items), BATCH_LIMIT):
   - Ad group labeling (`label_ad_groups_batch`)
 - **Performance**: Slightly slower (multiple API calls) but prevents total failure for large customers
 
+### Discovery Optimization: Direct Ad Query vs Nested Queries
+- **Problem**: Discovery was slow for large accounts (146k ad groups took ~271 API queries)
+- **Old Approach**: Nested queries (customers → campaigns → ad groups → label checks)
+- **New Approach**: Direct ad query with cross-resource filtering + deduplication
+- **Performance Improvement**: 74% fewer queries (271 → 71 for 146k ad groups)
+- **How It Works**:
+```python
+# ❌ OLD: Nested queries (slow)
+for customer in customers:
+    campaigns = query("SELECT campaign FROM campaign WHERE name LIKE 'HS/%'")  # 1 per customer
+    for campaign in campaigns:
+        ad_groups = query("SELECT ad_group FROM ad_group WHERE campaign = X")  # 1 per campaign
+    # + batch label checks
+
+# ✅ NEW: Direct ad query with cross-resource filter (fast)
+ad_group_map = {}
+for customer in customers:
+    # Single query gets all data using campaign.name filter
+    ads = query("""
+        SELECT ad_group_ad.ad_group, ad_group.id, campaign.id, campaign.name
+        FROM ad_group_ad
+        WHERE campaign.name LIKE 'HS/%'
+        AND ad_group_ad.ad.type = RESPONSIVE_SEARCH_AD
+        AND ad_group_ad.status != REMOVED
+    """)  # 1 per customer
+
+    # Deduplicate in memory (ad group may have multiple ads)
+    for row in ads:
+        if row.ad_group not in ad_group_map:
+            ad_group_map[row.ad_group] = {...}
+# + batch label checks
+```
+- **Key Techniques**:
+  - **Cross-resource filtering**: Use `campaign.name` in `ad_group_ad` query (Google Ads API supports this)
+  - **In-memory deduplication**: Use dict/set to deduplicate ad groups (multiple ads per ad group)
+  - **Customer-grouped label checks**: Still batch-check SD_DONE labels per customer for efficiency
+- **Tradeoffs**:
+  - **Pros**: Much faster (74% fewer queries), simpler code (no nested loops)
+  - **Cons**: Returns more data (all ads vs just ad groups), requires deduplication logic
+- **Query Count Comparison** (for 146k ad groups, 50 customers, 200 campaigns):
+  - Old: 1 (customers) + 50 (campaigns) + 200 (ad groups) + 20 (labels) = **271 queries**
+  - New: 1 (customers) + 50 (ads) + 20 (labels) = **71 queries**
+
 ---
 _Last updated: 2025-10-03_
