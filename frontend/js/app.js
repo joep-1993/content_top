@@ -263,40 +263,52 @@ async function refreshStatus() {
         // Display recent results
         const recentDiv = document.getElementById('recentResults');
         if (data.recent_results && data.recent_results.length > 0) {
-            let html = '';
+            recentDiv.innerHTML = ''; // Clear existing content
+
             data.recent_results.forEach((item, index) => {
                 const shortContent = item.content.substring(0, 150);
                 const fullContent = item.content;
                 const needsExpand = fullContent.length > 150;
 
-                html += `
-                    <div class="list-group-item" id="result-item-${index}">
-                        <div class="d-flex w-100 justify-content-between align-items-start">
-                            <div style="flex: 1;">
-                                <div class="d-flex justify-content-between align-items-start">
-                                    <h6 class="mb-1" style="word-break: break-all; max-width: 85%;">${item.url}</h6>
-                                    <small class="text-muted text-nowrap ms-2">${new Date(item.created_at).toLocaleString()}</small>
-                                </div>
-                                <div class="content-preview">
-                                    <p class="mb-1 small" id="preview-${index}">${shortContent}${needsExpand ? '...' : ''}</p>
-                                    <div class="full-content d-none" id="full-${index}">
-                                        <p class="mb-1 small">${fullContent}</p>
-                                    </div>
-                                    ${needsExpand ? `
-                                        <button class="btn btn-sm btn-link p-0" onclick="toggleContent(${index})">
-                                            <span id="toggle-text-${index}">View Full Content</span>
-                                        </button>
-                                    ` : ''}
-                                </div>
+                // Create item container
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'list-group-item';
+                itemDiv.id = `result-item-${index}`;
+
+                // Build the structure
+                itemDiv.innerHTML = `
+                    <div class="d-flex w-100 justify-content-between align-items-start">
+                        <div style="flex: 1;">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <h6 class="mb-1" style="word-break: break-all; max-width: 85%;">${item.url}</h6>
+                                <small class="text-muted text-nowrap ms-2">${new Date(item.created_at).toLocaleString()}</small>
                             </div>
-                            <button class="btn btn-sm btn-danger ms-2" onclick="deleteResult('${item.url}', ${index})" title="Delete and reset to pending">
-                                ×
-                            </button>
+                            <div class="content-preview">
+                                <div class="mb-1 small" id="preview-${index}"></div>
+                                <div class="full-content d-none" id="full-${index}">
+                                    <div class="mb-1 small"></div>
+                                </div>
+                                ${needsExpand ? `
+                                    <button class="btn btn-sm btn-link p-0" onclick="toggleContent(${index})">
+                                        <span id="toggle-text-${index}">View Full Content</span>
+                                    </button>
+                                ` : ''}
+                            </div>
                         </div>
+                        <button class="btn btn-sm btn-danger ms-2" onclick="deleteResult('${item.url.replace(/'/g, "\\'")}', ${index})" title="Delete and reset to pending">
+                            ×
+                        </button>
                     </div>
                 `;
+
+                // Insert HTML content separately to avoid escaping issues
+                itemDiv.querySelector(`#preview-${index}`).innerHTML = shortContent + (needsExpand ? '...' : '');
+                if (needsExpand) {
+                    itemDiv.querySelector(`#full-${index} .small`).innerHTML = fullContent;
+                }
+
+                recentDiv.appendChild(itemDiv);
             });
-            recentDiv.innerHTML = html;
         } else {
             recentDiv.innerHTML = '<p class="text-muted">No results yet</p>';
         }
