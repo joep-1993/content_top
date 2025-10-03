@@ -691,7 +691,8 @@ function getStatusBadge(status) {
         'running': '<span class="badge bg-primary">Running</span>',
         'paused': '<span class="badge bg-warning">Paused</span>',
         'completed': '<span class="badge bg-success">Completed</span>',
-        'failed': '<span class="badge bg-danger">Failed</span>'
+        'failed': '<span class="badge bg-danger">Failed</span>',
+        'cancelled': '<span class="badge bg-dark">Cancelled</span>'
     };
     return badges[status] || '<span class="badge bg-secondary">Unknown</span>';
 }
@@ -702,7 +703,8 @@ function getStatusClass(status) {
         'running': 'bg-primary',
         'paused': 'bg-warning',
         'completed': 'bg-success',
-        'failed': 'bg-danger'
+        'failed': 'bg-danger',
+        'cancelled': 'bg-dark'
     };
     return classes[status] || 'bg-secondary';
 }
