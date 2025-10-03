@@ -380,10 +380,9 @@ async def discover_ad_groups(
                             break
 
                         if sd_done_resource:
-                            # Batch query in chunks of 5000
-                            BATCH_SIZE = 5000
-                            for i in range(0, len(ad_group_resources), BATCH_SIZE):
-                                batch = ad_group_resources[i:i + BATCH_SIZE]
+                            # Batch query in chunks using configured batch_size
+                            for i in range(0, len(ad_group_resources), batch_size):
+                                batch = ad_group_resources[i:i + batch_size]
                                 resources_str = ", ".join(f"'{r}'" for r in batch)
 
                                 label_check_query = f"""

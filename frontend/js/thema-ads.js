@@ -233,7 +233,7 @@ async function discoverAdGroups() {
 
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutes timeout
+        const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 minutes timeout for large discovery operations
 
         // Build URL with optional limit and batch_size parameters
         let url = '/api/thema-ads/discover';
