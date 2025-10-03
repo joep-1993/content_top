@@ -10,6 +10,9 @@ _Tasks currently being worked on_
 ## Completed
 _Finished tasks (move here when done)_
 
+- [x] Fix AI prompt to generate shorter hyperlink text #claude-session:2025-10-04
+- [x] Display full URLs in frontend Recent Results #claude-session:2025-10-04
+- [x] Add contract/collapse button for expanded content #claude-session:2025-10-04
 - [x] Add parallel processing with configurable workers (1-10) #claude-session:2025-10-03
 - [x] Add upload URLs functionality with duplicate detection #claude-session:2025-10-03
 - [x] Add export functionality (CSV/JSON) #claude-session:2025-10-03

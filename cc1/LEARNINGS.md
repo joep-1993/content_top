@@ -49,6 +49,20 @@ docker-compose exec -T db psql -U postgres -d dbname -c "COPY table (column) FRO
 - **Cause**: OpenAI 1.35.0 incompatible with httpx >= 0.26.0
 - **Solution**: Pin httpx==0.25.2 in requirements.txt
 
+### AI Generating Long Hyperlink Text
+- **Problem**: AI generates very long anchor text (e.g., full product names with specifications like "Beeztees kattentuigje Hearts zwart 120 x 1 cm")
+- **Cause**: Prompt instructions were vague about link text length
+- **Solution**: Update GPT prompt with explicit constraints: "KORTE, heldere omschrijving (max 3-5 woorden)" with concrete example
+- **Example**: "Beeztees kattentuigje Hearts zwart 120 x 1 cm" → "Beeztees kattentuigje Hearts"
+- **Location**: backend/gpt_service.py - both system message and user prompt
+
+### Browser Cache Not Showing Updated JavaScript
+- **Issue**: JavaScript changes not visible in browser after editing
+- **Cause**: Browser caches static files (CSS/JS) aggressively
+- **Solution**: Hard refresh to bypass cache
+  - Windows/Linux: Ctrl + Shift + R or Ctrl + F5
+  - Mac: Cmd + Shift + R
+
 ## Git Commands
 ```bash
 # SSH Setup
@@ -134,5 +148,16 @@ with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
     results = list(executor.map(process_single_url, urls))
 ```
 
+### Database Cleanup and State Reset Workflow
+- **Pattern**: When removing bad AI-generated results, follow 4-step process to ensure clean state
+- **Use Case**: Removing results with quality issues (e.g., long hyperlinks) and reprocessing
+- **Steps**:
+  1. Re-add URLs to pending queue: `INSERT INTO pa.jvs_seo_werkvoorraad ... ON CONFLICT (url) DO NOTHING`
+  2. Remove from tracking table: `DELETE FROM pa.jvs_seo_werkvoorraad_kopteksten_check WHERE url IN (...)`
+  3. Delete bad results: `DELETE FROM pa.content_urls_joep WHERE url IN (...)`
+  4. Reset kopteksten flag: `UPDATE pa.jvs_seo_werkvoorraad SET kopteksten = 0 WHERE url IN (...)`
+- **Benefit**: Ensures URLs can be reprocessed without duplicates or state conflicts
+- **Important**: Use transactions (BEGIN/COMMIT) to ensure atomicity
+
 ---
-_Last updated: 2025-10-03_
+_Last updated: 2025-10-04_

@@ -62,8 +62,8 @@ async function processUrls() {
     const batchSize = parseInt(batchSizeInput.value) || 10;
     const parallelWorkers = parseInt(parallelWorkersInput.value) || 1;
 
-    if (batchSize < 1 || batchSize > 100) {
-        alert('Batch size must be between 1 and 100');
+    if (batchSize < 1 || batchSize > 10000) {
+        alert('Batch size must be between 1 and 10000');
         return;
     }
 
@@ -274,15 +274,15 @@ async function refreshStatus() {
                         <div class="d-flex w-100 justify-content-between align-items-start">
                             <div style="flex: 1;">
                                 <div class="d-flex justify-content-between align-items-start">
-                                    <h6 class="mb-1 text-truncate" style="max-width: 70%;" title="${item.url}">${item.url}</h6>
-                                    <small class="text-muted">${new Date(item.created_at).toLocaleString()}</small>
+                                    <h6 class="mb-1" style="word-break: break-all; max-width: 85%;">${item.url}</h6>
+                                    <small class="text-muted text-nowrap ms-2">${new Date(item.created_at).toLocaleString()}</small>
                                 </div>
                                 <div class="content-preview">
                                     <p class="mb-1 small" id="preview-${index}">${shortContent}${needsExpand ? '...' : ''}</p>
+                                    <div class="full-content d-none" id="full-${index}">
+                                        <p class="mb-1 small">${fullContent}</p>
+                                    </div>
                                     ${needsExpand ? `
-                                        <div class="full-content d-none" id="full-${index}">
-                                            <p class="mb-1 small">${fullContent}</p>
-                                        </div>
                                         <button class="btn btn-sm btn-link p-0" onclick="toggleContent(${index})">
                                             <span id="toggle-text-${index}">View Full Content</span>
                                         </button>
@@ -371,7 +371,7 @@ function toggleContent(index) {
     if (full.classList.contains('d-none')) {
         preview.classList.add('d-none');
         full.classList.remove('d-none');
-        toggleText.textContent = 'Show Less';
+        toggleText.textContent = 'Contract';
     } else {
         preview.classList.remove('d-none');
         full.classList.add('d-none');

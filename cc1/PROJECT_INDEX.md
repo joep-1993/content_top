@@ -6,7 +6,7 @@ Backend: FastAPI (Python 3.11, ThreadPoolExecutor for parallel processing) | Fro
 
 ## Directory Structure
 ```
-test2/
+content_top/
 ├── cc1/                   # CC1 documentation
 │   ├── TASKS.md          # Task tracking
 │   ├── LEARNINGS.md      # Knowledge capture
@@ -42,7 +42,7 @@ test2/
 │   │                     # CSV parsing: empty row handling, dash removal, optional columns
 │   ├── database.py       # PostgreSQL connection & schema initialization
 │   │                     # Schema: campaign_id and campaign_name columns added
-│   ├── gpt_service.py    # AI integration
+│   ├── gpt_service.py    # AI integration with optimized prompts for concise hyperlink text (3-5 words max)
 │   ├── thema_ads_service.py  # Thema Ads job management with state persistence
 │   │                          # Features: delete job, campaign info fetching at runtime
 │   ├── thema_ads_schema.sql  # Database schema for job tracking
@@ -53,7 +53,7 @@ test2/
 │   ├── css/
 │   │   └── style.css     # Custom styles
 │   └── js/
-│       ├── app.js        # Vanilla JavaScript
+│       ├── app.js        # Vanilla JavaScript with expandable content and full URL display
 │       └── thema-ads.js  # Thema Ads frontend logic with polling
 │                         # Features: delete job UI with confirmation
 ├── docker-compose.yml    # Service orchestration (no version attr)
@@ -355,4 +355,4 @@ Frontend has two tabs:
   - Original error message for actual failures
 
 ---
-_Last updated: 2025-10-03_
+_Last updated: 2025-10-04_
