@@ -51,6 +51,9 @@ async function testAPI() {
     }
 }
 
+let processingActive = false;
+let shouldStop = false;
+
 async function processUrls() {
     const btn = document.getElementById('processBtn');
     const resultDiv = document.getElementById('processResult');
@@ -105,8 +108,127 @@ async function processUrls() {
         resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
     } finally {
         btn.disabled = false;
-        btn.textContent = 'Process URLs';
+        btn.textContent = 'Process 2 URLs';
     }
+}
+
+async function processAllUrls() {
+    const processBtn = document.getElementById('processBtn');
+    const processAllBtn = document.getElementById('processAllBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+    const progressPercent = document.getElementById('progressPercent');
+    const resultDiv = document.getElementById('processResult');
+
+    // Disable buttons and show stop button
+    processBtn.disabled = true;
+    processAllBtn.disabled = true;
+    stopBtn.classList.remove('d-none');
+    progressContainer.classList.remove('d-none');
+
+    processingActive = true;
+    shouldStop = false;
+
+    let totalProcessed = 0;
+    let totalFailed = 0;
+    let batchCount = 0;
+
+    resultDiv.innerHTML = '<div class="alert alert-info">Starting batch processing...</div>';
+
+    try {
+        // Get initial status
+        const statusResponse = await fetch(`${API_BASE}/api/status`);
+        const initialStatus = await statusResponse.json();
+        const totalToProcess = initialStatus.pending;
+
+        if (totalToProcess === 0) {
+            resultDiv.innerHTML = '<div class="alert alert-warning"><strong>No URLs to process</strong></div>';
+            return;
+        }
+
+        // Process in batches until done or stopped
+        while (processingActive && !shouldStop) {
+            batchCount++;
+
+            // Update progress text
+            progressText.textContent = `Batch ${batchCount} - Processing...`;
+
+            const response = await fetch(`${API_BASE}/api/process-urls`, {
+                method: 'POST'
+            });
+
+            const data = await response.json();
+
+            if (data.status === 'complete' && data.processed === 0) {
+                // No more URLs to process
+                break;
+            }
+
+            totalProcessed += data.processed;
+            totalFailed += (data.total_attempted - data.processed);
+
+            // Update progress
+            const currentStatus = await fetch(`${API_BASE}/api/status`);
+            const status = await currentStatus.json();
+            const progress = Math.round((status.processed / status.total_urls) * 100);
+
+            progressBar.style.width = progress + '%';
+            progressPercent.textContent = progress + '%';
+            progressText.textContent = `Processed ${status.processed} of ${status.total_urls} URLs`;
+
+            // Show batch results
+            let batchHtml = `<div class="alert alert-info">`;
+            batchHtml += `<strong>Batch ${batchCount} Complete:</strong> `;
+            batchHtml += `${data.processed} successful, ${data.total_attempted - data.processed} failed/skipped<br>`;
+            batchHtml += `<strong>Total Progress:</strong> ${status.processed} of ${status.total_urls} URLs (${progress}%)`;
+            batchHtml += `</div>`;
+            resultDiv.innerHTML = batchHtml;
+
+            // Refresh status display
+            await refreshStatus();
+
+            // Check if we're done
+            if (status.pending === 0) {
+                break;
+            }
+
+            // Small delay between batches
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+
+        // Final update
+        const finalStatus = await fetch(`${API_BASE}/api/status`);
+        const final = await finalStatus.json();
+
+        progressBar.style.width = '100%';
+        progressPercent.textContent = '100%';
+        progressText.textContent = 'Processing complete!';
+        progressBar.classList.remove('progress-bar-animated');
+
+        resultDiv.innerHTML = `
+            <div class="alert alert-success">
+                <strong>Processing Complete!</strong><br>
+                Total batches: ${batchCount}<br>
+                Total processed: ${final.processed} URLs<br>
+                Pending: ${final.pending} URLs
+            </div>
+        `;
+
+    } catch (error) {
+        resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+    } finally {
+        processingActive = false;
+        processBtn.disabled = false;
+        processAllBtn.disabled = false;
+        stopBtn.classList.add('d-none');
+    }
+}
+
+function stopProcessing() {
+    shouldStop = true;
+    document.getElementById('progressText').textContent = 'Stopping after current batch...';
 }
 
 async function refreshStatus() {

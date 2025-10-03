@@ -24,6 +24,9 @@ docker exec -it <container> bash  # Enter container
 
 # Thema Ads Web Interface (Quick Start)
 ./start-thema-ads.sh           # Build, start, and initialize everything
+
+# Access Frontend
+# Navigate to http://localhost:8001/static/index.html
 ```
 
 ## Common Issues & Solutions

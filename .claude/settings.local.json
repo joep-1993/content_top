@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(npx n8n-mcp:*)",
-      "Bash(claude mcp:*)"
+      "Bash(claude mcp:*)",
+      "Bash(test:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(docker-compose exec:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []
