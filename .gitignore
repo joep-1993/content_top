@@ -31,11 +31,12 @@ postgres_data/
 cc1/.tmp/
 cc1/*.log
 
-# Secrets and sensitive data
-thema_ads_project/thema_ads
-
-# Old directory structure (merged into thema_ads_optimized/)
+# Thema Ads project files (separate repository)
+thema_ads_optimized/
 thema_ads_project/
+start-thema-ads.sh
+THEMA_ADS_GUIDE.md
+sample_input.csv
 
 # Large data files
 *.xlsx

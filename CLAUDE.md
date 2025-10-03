@@ -1,35 +1,33 @@
 # CLAUDE.md
 
-This project uses the CC1 documentation system for knowledge management.
+This project is **Content Top** - an SEO content generation system.
 
 ## Tech Stack
 - **Backend**: FastAPI with auto-reload
 - **Frontend**: Static files with Bootstrap CDN (no build tools)
 - **Database**: PostgreSQL in Docker
-- **AI**: OpenAI API configured in gpt_service.py
+- **AI**: OpenAI API for content generation
 
 ## Development Workflow
 1. Run `docker-compose up` to start everything
 2. Edit files directly - they auto-reload
-3. Access at http://localhost:8001
+3. Access frontend at http://localhost:8001/static/index.html
 
 ## Important Notes
 - **No Build Tools**: Edit HTML/CSS/JS directly
 - **Docker First**: Everything runs in containers
 - **Simple Scale**: Designed for small teams (1-10 users)
 
-## CC1 Documentation
-- `cc1/TASKS.md` - Current work tracking
-- `cc1/LEARNINGS.md` - Knowledge capture
-- `cc1/BACKLOG.md` - Future planning
-- `cc1/PROJECT_INDEX.md` - Technical reference
-
 ## File Locations
 - API: `backend/main.py`
-- AI: `backend/gpt_service.py`
-- UI: `frontend/index.html`
-- Styles: `frontend/css/style.css`
-- JS: `frontend/js/app.js`
+- AI Service: `backend/gpt_service.py`
+- Scraper: `backend/scraper_service.py`
+- Database: `backend/database.py`
+- Frontend: `frontend/index.html`
+- App Logic: `frontend/js/app.js`
+
+## What It Does
+Processes URLs from database, scrapes product information, generates AI-powered SEO content, and saves results.
 
 ---
-_Template initialized: 2025-09-30_
+_Project: Content Top | SEO Content Generation_
