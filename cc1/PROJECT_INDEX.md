@@ -12,31 +12,7 @@ content_top/
 │   ├── LEARNINGS.md      # Knowledge capture
 │   ├── BACKLOG.md        # Future planning
 │   └── PROJECT_INDEX.md  # This file
-├── thema_ads_optimized/  # Google Ads automation (high-performance async version)
-│   ├── config.py         # Environment-based configuration
-│   ├── models.py         # Data structures
-│   ├── google_ads_client.py  # Client initialization
-│   ├── main_optimized.py     # Async orchestrator
-│   ├── operations/       # API operations (prefetch, ads, labels)
-│   │   ├── prefetch.py
-│   │   ├── ads.py
-│   │   └── labels.py
-│   ├── templates/        # Ad content generators
-│   │   └── generators.py
-│   ├── processors/       # Data loading (Excel/CSV)
-│   │   └── data_loader.py
-│   ├── utils/            # Utilities (cache, retry)
-│   │   ├── cache.py
-│   │   └── retry.py
-│   ├── data/             # Input files (mounted volume)
-│   ├── logs/             # Output logs (mounted volume)
-│   ├── Dockerfile        # Multi-stage build
-│   ├── docker-compose.yml
-│   ├── docker-run.sh     # Helper script
-│   ├── requirements.txt
-│   ├── .env              # Google Ads credentials (git ignored)
-│   ├── .env.example      # Template for environment
-│   └── README.md         # Usage documentation
+├── SEO_koptekst/         # Legacy SEO data directory
 ├── backend/
 │   ├── main.py           # FastAPI app with CORS & Thema Ads endpoints
 │   │                     # CSV parsing: empty row handling, dash removal, optional columns
@@ -46,10 +22,10 @@ content_top/
 │   ├── thema_ads_service.py  # Thema Ads job management with state persistence
 │   │                          # Features: delete job, campaign info fetching at runtime
 │   ├── thema_ads_schema.sql  # Database schema for job tracking
+│   ├── schema.sql        # SEO workflow database schema
 │   └── scraper_service.py    # Web scraping utilities
 ├── frontend/
 │   ├── index.html        # Main page (Bootstrap CDN)
-│   ├── thema-ads.html    # Thema Ads progress tracking UI
 │   ├── css/
 │   │   └── style.css     # Custom styles
 │   └── js/
@@ -125,18 +101,9 @@ SERVICE_ACCOUNT_FILE=C:\Users\YourName\Downloads\Python\service-account.json
 
 ### Important Notes
 - **OAuth Credentials**: refresh_token must match the client_id/client_secret used to generate it
-- **API Version**: Requires google-ads>=25.1.0 (currently using v28.0.0)
+- **API Version**: Requires google-ads>=25.1.0
 - **Performance**: For 1M ads, consider running in chunks of 10k-50k
-
-## Docker Configuration
-
-### Uvicorn Server Settings (docker-compose.yml)
-```bash
-command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload --timeout-keep-alive 600 --timeout-graceful-shutdown 60
-```
-- **timeout-keep-alive**: 600 seconds (10 minutes) - supports large file uploads without connection drops
-- **timeout-graceful-shutdown**: 60 seconds - allows in-flight requests to complete during restart
-- **reload**: Auto-reload on code changes (development mode)
+- **Thema Ads Integration**: Google Ads automation features are integrated into the main application (backend/thema_ads_service.py, frontend/js/thema-ads.js) rather than being a separate directory
 
 ## Database Schema
 
@@ -234,7 +201,7 @@ lxml==5.1.0               # XML/HTML parsing
 psycopg2-binary==2.9.9    # PostgreSQL adapter
 
 # Google Ads
-google-ads==28.0.0        # Google Ads API client (upgraded from v24)
+google-ads>=25.1.0        # Google Ads API client (minimum v25.1.0)
 pandas==2.2.0             # Data processing and Excel handling
 openpyxl==3.1.2           # Excel file reading
 
@@ -244,10 +211,10 @@ python-dotenv==1.0.0      # Environment variable management
 
 ## Git Repository
 
-- **URL**: https://github.com/joep-1993/theme_ads
+- **URL**: https://github.com/joep-1993/content_top
 - **User**: joep-1993 <joepvanschagen34@gmail.com>
 - **Authentication**: SSH (ed25519 key)
-- **Protected Files**: .env files, *.xlsx, *.xls, old thema_ads_project/ (all in .gitignore)
+- **Protected Files**: .env files, *.xlsx, *.xls, thema_ads_optimized/, thema_ads_project/ (all in .gitignore)
 
 ## API Endpoints
 
@@ -258,7 +225,7 @@ python-dotenv==1.0.0      # Environment variable management
 - `GET /static/*` - Frontend files
 
 ### SEO Workflow
-- `POST /api/process-urls?batch_size=10&parallel_workers=3` - Process URLs with parallel workers (batch_size: 1-100, parallel_workers: 1-10)
+- `POST /api/process-urls?batch_size=10&parallel_workers=3` - Process URLs with parallel workers (batch_size: 1-10000, parallel_workers: 1-10)
 - `GET /api/status` - Get SEO processing status (includes total, processed, skipped, failed, pending counts)
 - `POST /api/upload-urls` - Upload text file with URLs (one per line, duplicates skipped)
 - `DELETE /api/result/{url}` - Delete result and reset URL to pending
