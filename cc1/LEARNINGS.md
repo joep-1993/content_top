@@ -174,5 +174,58 @@ with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
 - **Benefit**: Ensures URLs can be reprocessed without duplicates or state conflicts
 - **Important**: Use transactions (BEGIN/COMMIT) to ensure atomicity
 
+### Database Query Performance - Avoiding NOT IN with Large Datasets
+- **Problem**: Query timeout on status endpoint with 75,858 URLs (30+ seconds → timeout)
+- **Cause**: `NOT IN (SELECT url FROM table)` performs poorly on large datasets (75k+ rows)
+- **Solution**: Replace with `LEFT JOIN ... WHERE IS NULL` pattern
+- **Performance**: Query time reduced from 30+ seconds to <100ms
+- **Example**:
+```sql
+-- ❌ Slow: NOT IN subquery (75k rows = timeout)
+SELECT COUNT(*) FROM pa.jvs_seo_werkvoorraad
+WHERE url NOT IN (SELECT url FROM pa.jvs_seo_werkvoorraad_kopteksten_check);
+
+-- ✅ Fast: LEFT JOIN pattern (<100ms)
+SELECT COUNT(*)
+FROM pa.jvs_seo_werkvoorraad w
+LEFT JOIN pa.jvs_seo_werkvoorraad_kopteksten_check c ON w.url = c.url
+WHERE c.url IS NULL;
+```
+- **Additional Optimization**: Add index on frequently filtered columns (e.g., `CREATE INDEX idx_kopteksten_check_status ON pa.jvs_seo_werkvoorraad_kopteksten_check(status)`)
+- **Location**: backend/main.py - `/api/status` endpoint
+
+### CSV Export with Proper Encoding and Formatting
+- **Pattern**: Export database content to CSV with UTF-8 encoding and proper newline handling
+- **Use Case**: Exporting AI-generated content that contains HTML, special characters, and multiline text
+- **Implementation**:
+  1. Add UTF-8 BOM (`\ufeff`) for Excel compatibility
+  2. Strip newlines from content fields to prevent row breaks: `content.replace('\n', ' ').replace('\r', ' ')`
+  3. Use `csv.QUOTE_ALL` to properly escape special characters
+  4. Use `BytesIO` for binary output with UTF-8 encoding
+  5. Set proper content type: `text/csv; charset=utf-8`
+- **Benefits**:
+  - No empty rows in exported CSV
+  - Proper UTF-8 character display (fixes "geÃ¯" → "geï")
+  - Excel opens file correctly without import wizard
+- **Example**:
+```python
+from io import StringIO, BytesIO
+import csv
+
+output = BytesIO()
+output.write('\ufeff'.encode('utf-8'))  # UTF-8 BOM
+
+text_output = StringIO()
+writer = csv.writer(text_output, quoting=csv.QUOTE_ALL, lineterminator='\n')
+writer.writerow(['url', 'content'])
+
+for row in rows:
+    content = row['content'].replace('\n', ' ').replace('\r', ' ') if row['content'] else ''
+    writer.writerow([row['url'], content])
+
+output.write(text_output.getvalue().encode('utf-8'))
+```
+- **Location**: backend/main.py - `/api/export/csv` endpoint
+
 ---
 _Last updated: 2025-10-04_

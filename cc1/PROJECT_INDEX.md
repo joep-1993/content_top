@@ -203,6 +203,9 @@ CREATE TABLE pa.jvs_seo_werkvoorraad_kopteksten_check (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Indexes for performance
+CREATE INDEX idx_kopteksten_check_status ON pa.jvs_seo_werkvoorraad_kopteksten_check(status);
+
 CREATE TABLE pa.content_urls_joep (
     id SERIAL PRIMARY KEY,
     url VARCHAR(500) NOT NULL,

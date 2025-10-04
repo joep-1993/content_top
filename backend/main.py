@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse
 from datetime import datetime
-from io import StringIO
+from io import StringIO, BytesIO
 import csv
 import json
 import asyncio
@@ -170,8 +170,8 @@ async def process_urls(batch_size: int = 2, parallel_workers: int = 1):
     """
     try:
         # Validate parameters
-        if batch_size < 1 or batch_size > 100:
-            raise HTTPException(status_code=400, detail="Batch size must be between 1 and 100")
+        if batch_size < 1 or batch_size > 10000:
+            raise HTTPException(status_code=400, detail="Batch size must be between 1 and 10000")
 
         if parallel_workers < 1 or parallel_workers > 10:
             raise HTTPException(status_code=400, detail="Parallel workers must be between 1 and 10")
@@ -246,8 +246,10 @@ async def get_status():
 
         # Get pending URLs (not yet attempted)
         cur.execute("""
-            SELECT COUNT(*) as pending FROM pa.jvs_seo_werkvoorraad
-            WHERE url NOT IN (SELECT url FROM pa.jvs_seo_werkvoorraad_kopteksten_check)
+            SELECT COUNT(*) as pending
+            FROM pa.jvs_seo_werkvoorraad w
+            LEFT JOIN pa.jvs_seo_werkvoorraad_kopteksten_check c ON w.url = c.url
+            WHERE c.url IS NULL
         """)
         pending = cur.fetchone()['pending']
 
@@ -283,7 +285,7 @@ async def export_csv():
         cur = conn.cursor()
 
         cur.execute("""
-            SELECT url, content, created_at
+            SELECT url, content
             FROM pa.content_urls_joep
             ORDER BY created_at DESC
         """)
@@ -292,19 +294,27 @@ async def export_csv():
         cur.close()
         conn.close()
 
-        # Create CSV in memory
-        output = StringIO()
-        writer = csv.writer(output)
-        writer.writerow(['URL', 'Content', 'Created At'])
+        # Create CSV in memory with UTF-8 BOM for proper Excel compatibility
+        output = BytesIO()
+        output.write('\ufeff'.encode('utf-8'))  # UTF-8 BOM
+
+        text_output = StringIO()
+        writer = csv.writer(text_output, quoting=csv.QUOTE_ALL, lineterminator='\n')
+        writer.writerow(['url', 'content'])
 
         for row in rows:
-            writer.writerow([row['url'], row['content'], row['created_at']])
+            # Replace newlines in content with spaces to prevent row breaks
+            content = row['content'].replace('\n', ' ').replace('\r', ' ') if row['content'] else ''
+            writer.writerow([row['url'], content])
+
+        # Write CSV text to output with UTF-8 encoding
+        output.write(text_output.getvalue().encode('utf-8'))
 
         # Return as downloadable file
         output.seek(0)
         return StreamingResponse(
             iter([output.getvalue()]),
-            media_type="text/csv",
+            media_type="text/csv; charset=utf-8",
             headers={"Content-Disposition": f"attachment; filename=content_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"}
         )
 

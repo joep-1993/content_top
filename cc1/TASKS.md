@@ -10,6 +10,8 @@ _Tasks currently being worked on_
 ## Completed
 _Finished tasks (move here when done)_
 
+- [x] Optimize slow database queries in status endpoint (NOT IN → LEFT JOIN, add status index) #claude-session:2025-10-04
+- [x] Fix CSV export formatting (UTF-8 encoding, newline removal, proper quoting) #claude-session:2025-10-04
 - [x] Fix HTML rendering bug causing browser to auto-link HTML tags #claude-session:2025-10-04
 - [x] Fix AI prompt to generate shorter hyperlink text #claude-session:2025-10-04
 - [x] Display full URLs in frontend Recent Results #claude-session:2025-10-04
