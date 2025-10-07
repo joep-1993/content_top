@@ -543,3 +543,42 @@ async function validateLinks() {
         validateBtn.textContent = 'Validate Links';
     }
 }
+
+// Reset validation history
+async function resetValidationHistory() {
+    if (!confirm('Reset all validation history? This will allow all URLs to be re-validated.')) {
+        return;
+    }
+
+    const resetBtn = document.getElementById('resetValidationBtn');
+    const resultDiv = document.getElementById('validationResult');
+
+    resetBtn.disabled = true;
+    resetBtn.textContent = 'Resetting...';
+    resultDiv.innerHTML = '<div class="alert alert-info">Resetting validation history...</div>';
+
+    try {
+        const response = await fetch(`${API_BASE}/api/validation-history/reset`, {
+            method: 'DELETE'
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            resultDiv.innerHTML = `
+                <div class="alert alert-success">
+                    <strong>${data.message}</strong><br>
+                    All URLs can now be re-validated.
+                </div>
+            `;
+        } else {
+            resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.detail}</div>`;
+        }
+
+    } catch (error) {
+        resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+    } finally {
+        resetBtn.disabled = false;
+        resetBtn.textContent = 'Reset Validation';
+    }
+}

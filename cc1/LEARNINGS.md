@@ -304,11 +304,15 @@ with open(csv_path, 'r', encoding='utf-8-sig') as f:
   4. Parallel processing with ThreadPoolExecutor for speed
   5. If broken links found (301/404), auto-reset content to pending for regeneration
   6. Store validation results in JSONB column for audit trail
+  7. Skip URLs already validated (LEFT JOIN check)
+  8. Reset validation history when needed via DELETE endpoint
 - **Benefits**:
   - Automated quality control for product links
   - Parallel validation speeds up large batches
   - Historical tracking of broken links
   - Auto-recovery workflow (reset to pending)
+  - Incremental validation - only checks unvalidated URLs
+  - Can reset and re-validate all URLs when needed
 - **Example**:
 ```python
 from bs4 import BeautifulSoup

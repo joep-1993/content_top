@@ -101,7 +101,7 @@
                         <div class="row g-2 mb-3">
                             <div class="col-auto">
                                 <label for="validationBatchSize" class="form-label small mb-1">Batch Size</label>
-                                <input type="number" class="form-control" id="validationBatchSize" value="10" min="1" max="100" style="width: 120px;">
+                                <input type="number" class="form-control" id="validationBatchSize" value="10" min="1" style="width: 120px;">
                             </div>
                             <div class="col-auto">
                                 <label for="validationParallelWorkers" class="form-label small mb-1">Parallel Workers</label>
@@ -110,6 +110,11 @@
                             <div class="col-auto d-flex align-items-end">
                                 <button class="btn btn-warning" onclick="validateLinks()" id="validateBtn">
                                     Validate Links
+                                </button>
+                            </div>
+                            <div class="col-auto d-flex align-items-end">
+                                <button class="btn btn-outline-danger" onclick="resetValidationHistory()" id="resetValidationBtn" title="Reset validation history to re-check all URLs">
+                                    Reset Validation
                                 </button>
                             </div>
                         </div>

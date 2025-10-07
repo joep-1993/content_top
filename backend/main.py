@@ -481,11 +481,13 @@ async def validate_links(batch_size: int = 10, parallel_workers: int = 3):
         conn = get_db_connection()
         cur = conn.cursor()
 
-        # Get content to validate (limit by batch size)
+        # Get content to validate (only URLs not yet validated)
         cur.execute("""
-            SELECT url, content
-            FROM pa.content_urls_joep
-            ORDER BY created_at DESC
+            SELECT c.url, c.content
+            FROM pa.content_urls_joep c
+            LEFT JOIN pa.link_validation_results v ON c.url = v.content_url
+            WHERE v.content_url IS NULL
+            ORDER BY c.created_at DESC
             LIMIT %s
         """, (batch_size,))
         rows = cur.fetchall()
@@ -599,6 +601,33 @@ async def get_validation_history(limit: int = 20):
         return {
             "status": "success",
             "results": rows
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/validation-history/reset")
+async def reset_validation_history():
+    """Reset all validation history - allows re-validation of all URLs"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # Get count before deletion
+        cur.execute("SELECT COUNT(*) as count FROM pa.link_validation_results")
+        count = cur.fetchone()['count']
+
+        # Delete all validation history
+        cur.execute("DELETE FROM pa.link_validation_results")
+        conn.commit()
+
+        cur.close()
+        conn.close()
+
+        return {
+            "status": "success",
+            "message": f"Reset validation history for {count} URLs",
+            "cleared_count": count
         }
 
     except Exception as e:

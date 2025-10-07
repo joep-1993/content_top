@@ -244,8 +244,9 @@ python-dotenv==1.0.0      # Environment variable management
 - `DELETE /api/result/{url}` - Delete result and reset URL to pending
 - `GET /api/export/csv` - Export all generated content as CSV
 - `GET /api/export/json` - Export all generated content as JSON
-- `POST /api/validate-links?batch_size=1000&parallel_workers=3` - Validate hyperlinks in content (checks for 301/404, auto-resets to pending if broken) (batch_size: min 1, no upper limit, parallel_workers: 1-10)
+- `POST /api/validate-links?batch_size=1000&parallel_workers=3` - Validate hyperlinks in content (checks for 301/404, auto-resets to pending if broken) (batch_size: min 1, no upper limit, parallel_workers: 1-10). Only validates URLs not yet validated.
 - `GET /api/validation-history?limit=20` - Get link validation history with broken link details
+- `DELETE /api/validation-history/reset` - Reset all validation history to allow re-validation of all URLs
 
 ### Labels Applied by Thema Ads
 **Ad Groups get labeled with:**
