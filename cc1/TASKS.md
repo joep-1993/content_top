@@ -10,6 +10,7 @@ _Tasks currently being worked on_
 ## Completed
 _Finished tasks (move here when done)_
 
+- [x] Remove batch size upper limit for SEO content generation (now unlimited) #claude-session:2025-10-07
 - [x] Implement hyperlink validation feature with parallel processing (301/404 detection, auto-reset to pending) #claude-session:2025-10-07
 - [x] Create CSV import script for pre-generated content (19,791 items imported) #claude-session:2025-10-07
 - [x] Change frontend port from 8001 to 8003 (avoid port conflicts) #claude-session:2025-10-07

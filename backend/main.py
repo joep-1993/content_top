@@ -171,8 +171,8 @@ async def process_urls(batch_size: int = 2, parallel_workers: int = 1):
     """
     try:
         # Validate parameters
-        if batch_size < 1 or batch_size > 10000:
-            raise HTTPException(status_code=400, detail="Batch size must be between 1 and 10000")
+        if batch_size < 1:
+            raise HTTPException(status_code=400, detail="Batch size must be at least 1")
 
         if parallel_workers < 1 or parallel_workers > 10:
             raise HTTPException(status_code=400, detail="Parallel workers must be between 1 and 10")

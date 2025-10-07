@@ -62,8 +62,8 @@ async function processUrls() {
     const batchSize = parseInt(batchSizeInput.value) || 10;
     const parallelWorkers = parseInt(parallelWorkersInput.value) || 1;
 
-    if (batchSize < 1 || batchSize > 10000) {
-        alert('Batch size must be between 1 and 10000');
+    if (batchSize < 1) {
+        alert('Batch size must be at least 1');
         return;
     }
 
