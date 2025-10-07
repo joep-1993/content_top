@@ -472,8 +472,8 @@ async def validate_links(batch_size: int = 10, parallel_workers: int = 3):
     """
     try:
         # Validate parameters
-        if batch_size < 1 or batch_size > 100:
-            raise HTTPException(status_code=400, detail="Batch size must be between 1 and 100")
+        if batch_size < 1:
+            raise HTTPException(status_code=400, detail="Batch size must be at least 1")
 
         if parallel_workers < 1 or parallel_workers > 10:
             raise HTTPException(status_code=400, detail="Parallel workers must be between 1 and 10")

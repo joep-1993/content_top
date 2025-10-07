@@ -455,8 +455,8 @@ async function validateLinks() {
     const batchSize = parseInt(batchSizeInput.value) || 10;
     const parallelWorkers = parseInt(parallelWorkersInput.value) || 3;
 
-    if (batchSize < 1 || batchSize > 100) {
-        alert('Batch size must be between 1 and 100');
+    if (batchSize < 1) {
+        alert('Batch size must be at least 1');
         return;
     }
 

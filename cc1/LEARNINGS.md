@@ -28,9 +28,19 @@ docker-compose exec app python -m backend.import_content
 
 ## Common Issues & Solutions
 
+### Docker/WSL Integration
+- **Error**: `docker-compose: command not found` in WSL 2
+- **Cause**: Docker Desktop WSL integration not enabled
+- **Solution**: Enable WSL integration in Docker Desktop settings
+  - Open Docker Desktop → Settings → Resources → WSL Integration
+  - Enable integration for your WSL distro
+  - Restart WSL terminal
+- **Documentation**: https://docs.docker.com/go/wsl2/
+
 ### Port Conflicts
-- FastAPI on 8001 (not 8000) to avoid conflicts
+- FastAPI on 8003 (external) → 8000 (internal container port)
 - PostgreSQL on 5433 (not 5432) for same reason
+- Frontend accessible at http://localhost:8003/static/index.html
 
 ### CORS Errors
 - Check `allow_origins` in main.py
