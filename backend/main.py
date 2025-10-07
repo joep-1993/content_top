@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from backend.database import get_db_connection
 from backend.scraper_service import scrape_product_page, sanitize_content
 from backend.gpt_service import generate_product_content, check_content_has_valid_links
+from backend.link_validator import validate_content_links
 
 app = FastAPI(title="Content Top - SEO Content Generation", version="1.0.0")
 
@@ -445,6 +446,159 @@ async def delete_result(url: str):
             "status": "success",
             "message": f"Result deleted and URL reset to pending",
             "url": url
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+def validate_single_content(content_data: tuple) -> dict:
+    """Validate links in a single content item - runs in thread pool"""
+    content_url, content = content_data
+
+    # Validate links in content
+    validation_result = validate_content_links(content)
+
+    # Add the content URL to the result
+    validation_result['content_url'] = content_url
+
+    return validation_result
+
+@app.post("/api/validate-links")
+async def validate_links(batch_size: int = 10, parallel_workers: int = 3):
+    """
+    Validate hyperlinks in generated content.
+    Checks if links return 301 or 404, and moves content back to pending if broken links found.
+    Supports parallel processing with configurable workers.
+    """
+    try:
+        # Validate parameters
+        if batch_size < 1 or batch_size > 100:
+            raise HTTPException(status_code=400, detail="Batch size must be between 1 and 100")
+
+        if parallel_workers < 1 or parallel_workers > 10:
+            raise HTTPException(status_code=400, detail="Parallel workers must be between 1 and 10")
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # Get content to validate (limit by batch size)
+        cur.execute("""
+            SELECT url, content
+            FROM pa.content_urls_joep
+            ORDER BY created_at DESC
+            LIMIT %s
+        """, (batch_size,))
+        rows = cur.fetchall()
+
+        if not rows:
+            cur.close()
+            conn.close()
+            return {
+                "status": "complete",
+                "message": "No content to validate",
+                "validated": 0,
+                "moved_to_pending": 0
+            }
+
+        # Prepare content items for parallel validation
+        content_items = [(row['url'], row['content']) for row in rows]
+
+        # Process validations in parallel using ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
+            validation_results = list(executor.map(validate_single_content, content_items))
+
+        results = []
+        moved_to_pending = 0
+
+        # Process validation results and update database
+        for validation_result in validation_results:
+            content_url = validation_result['content_url']
+
+            # Save validation results
+            cur.execute("""
+                INSERT INTO pa.link_validation_results
+                (content_url, total_links, broken_links, valid_links, broken_link_details)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (
+                content_url,
+                validation_result['total_links'],
+                len(validation_result['broken_links']),
+                validation_result['valid_links'],
+                json.dumps(validation_result['broken_links'])
+            ))
+
+            # If broken links found, move back to pending
+            if validation_result['has_broken_links']:
+                # Delete from content_urls_joep
+                cur.execute("""
+                    DELETE FROM pa.content_urls_joep
+                    WHERE url = %s
+                """, (content_url,))
+
+                # Delete from tracking table
+                cur.execute("""
+                    DELETE FROM pa.jvs_seo_werkvoorraad_kopteksten_check
+                    WHERE url = %s
+                """, (content_url,))
+
+                # Reset kopteksten flag
+                cur.execute("""
+                    UPDATE pa.jvs_seo_werkvoorraad
+                    SET kopteksten = 0
+                    WHERE url = %s
+                """, (content_url,))
+
+                moved_to_pending += 1
+
+            results.append({
+                'url': content_url,
+                'total_links': validation_result['total_links'],
+                'broken_links_count': len(validation_result['broken_links']),
+                'broken_links': validation_result['broken_links'],
+                'moved_to_pending': validation_result['has_broken_links']
+            })
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        return {
+            "status": "success",
+            "validated": len(rows),
+            "moved_to_pending": moved_to_pending,
+            "results": results
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/validation-history")
+async def get_validation_history(limit: int = 20):
+    """Get history of link validation results"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT
+                content_url,
+                total_links,
+                broken_links,
+                valid_links,
+                broken_link_details,
+                validated_at
+            FROM pa.link_validation_results
+            ORDER BY validated_at DESC
+            LIMIT %s
+        """, (limit,))
+        rows = cur.fetchall()
+
+        cur.close()
+        conn.close()
+
+        return {
+            "status": "success",
+            "results": rows
         }
 
     except Exception as e:

@@ -19,6 +19,8 @@ content_top/
 │   ├── database.py       # PostgreSQL connection & schema initialization
 │   │                     # Schema: campaign_id and campaign_name columns added
 │   ├── gpt_service.py    # AI integration with optimized prompts for concise hyperlink text (3-5 words max)
+│   ├── link_validator.py # Hyperlink validation with HTTP status checking (301/404 detection)
+│   ├── import_content.py # CSV import utility for bulk content upload (semicolon delimiter)
 │   ├── thema_ads_service.py  # Thema Ads job management with state persistence
 │   │                          # Features: delete job, campaign info fetching at runtime
 │   ├── thema_ads_schema.sql  # Database schema for job tracking
@@ -179,6 +181,17 @@ CREATE TABLE pa.content_urls_joep (
     content TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Link validation results tracking
+CREATE TABLE pa.link_validation_results (
+    id SERIAL PRIMARY KEY,
+    content_url TEXT NOT NULL,
+    total_links INTEGER DEFAULT 0,
+    broken_links INTEGER DEFAULT 0,
+    valid_links INTEGER DEFAULT 0,
+    broken_link_details JSONB,  -- Stores array of broken link objects with url, status_code, status_text
+    validated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 ```
 
 ## Dependencies
@@ -231,6 +244,8 @@ python-dotenv==1.0.0      # Environment variable management
 - `DELETE /api/result/{url}` - Delete result and reset URL to pending
 - `GET /api/export/csv` - Export all generated content as CSV
 - `GET /api/export/json` - Export all generated content as JSON
+- `POST /api/validate-links?batch_size=10&parallel_workers=3` - Validate hyperlinks in content (checks for 301/404, auto-resets to pending if broken)
+- `GET /api/validation-history?limit=20` - Get link validation history with broken link details
 
 ### Labels Applied by Thema Ads
 **Ad Groups get labeled with:**
@@ -325,4 +340,4 @@ Frontend has two tabs:
   - Original error message for actual failures
 
 ---
-_Last updated: 2025-10-04_
+_Last updated: 2025-10-07_

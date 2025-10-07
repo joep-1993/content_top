@@ -18,8 +18,12 @@ docker exec -it <container> bash  # Enter container
 docker cp /path/to/file container_name:/tmp/file
 docker-compose exec -T db psql -U postgres -d dbname -c "COPY table (column) FROM '/tmp/file';"
 
+# CSV import from Windows to container
+docker cp /path/to/file.csv content_top_app:/app/file.csv
+docker-compose exec app python -m backend.import_content
+
 # Access Frontend
-# Navigate to http://localhost:8001/static/index.html
+# Navigate to http://localhost:8003/static/index.html
 ```
 
 ## Common Issues & Solutions
@@ -77,6 +81,20 @@ const div = document.createElement('div');
 div.innerHTML = content;
 ```
 - **Location**: frontend/js/app.js - refreshStatus() function
+
+### Windows File Paths Not Accessible from Docker Container
+- **Problem**: Docker container cannot access Windows file paths like `C:/Users/...` or `/mnt/c/Users/...`
+- **Cause**: Container has isolated filesystem, Windows paths are not mounted by default
+- **Solution**: Copy file into container using `docker cp`, then run script
+- **Example**:
+```bash
+# Copy CSV from Windows to container
+docker cp /mnt/c/Users/JoepvanSchagen/Downloads/file.csv content_top_app:/app/file.csv
+
+# Run Python script in container
+docker-compose exec app python -m backend.import_content
+```
+- **Location**: CSV import workflow for bulk content upload
 
 ## Git Commands
 ```bash
@@ -227,5 +245,84 @@ output.write(text_output.getvalue().encode('utf-8'))
 ```
 - **Location**: backend/main.py - `/api/export/csv` endpoint
 
+### CSV Import for Bulk Content Upload
+- **Pattern**: Import pre-generated content from CSV with semicolon delimiters and UTF-8 BOM
+- **Use Case**: Bulk upload of AI-generated content (e.g., 19,791 items) from external sources
+- **Implementation**:
+  1. Read CSV with UTF-8-sig encoding (auto-strips BOM)
+  2. Use semicolon (`;`) as delimiter for compatibility
+  3. Extract `url` and `content_top` columns
+  4. Insert into three tables atomically:
+     - `pa.jvs_seo_werkvoorraad` - mark as processed (`kopteksten = 1`)
+     - `pa.content_urls_joep` - store generated content
+     - `pa.jvs_seo_werkvoorraad_kopteksten_check` - track as success
+  5. Use `ON CONFLICT DO NOTHING` to skip duplicates
+  6. Commit every 100 rows for progress tracking
+- **Benefits**:
+  - Handles large files (19k+ rows) efficiently
+  - Transactional safety with periodic commits
+  - Progress reporting during import
+  - Skips duplicates automatically
+- **Example**:
+```python
+import csv
+
+with open(csv_path, 'r', encoding='utf-8-sig') as f:
+    reader = csv.DictReader(f, delimiter=';')
+    for row in reader:
+        url = row['url'].strip()
+        content = row['content_top'].strip()
+
+        # Insert into work queue (mark as processed)
+        cur.execute("INSERT INTO pa.jvs_seo_werkvoorraad (url, kopteksten) VALUES (%s, 1) ON CONFLICT (url) DO UPDATE SET kopteksten = 1", (url,))
+
+        # Insert content
+        cur.execute("INSERT INTO pa.content_urls_joep (url, content) VALUES (%s, %s) ON CONFLICT DO NOTHING", (url, content))
+
+        # Track as success
+        cur.execute("INSERT INTO pa.jvs_seo_werkvoorraad_kopteksten_check (url, status) VALUES (%s, 'success') ON CONFLICT DO NOTHING", (url,))
+```
+- **Location**: backend/import_content.py
+
+### Hyperlink Validation with Status Code Checking
+- **Pattern**: Validate hyperlinks in generated content by checking HTTP status codes (301/404)
+- **Use Case**: Quality control for AI-generated content - detect broken product links
+- **Implementation**:
+  1. Extract all `<a href>` tags from HTML content using BeautifulSoup
+  2. Prepend base domain (`https://www.beslist.nl`) to relative URLs
+  3. Check HTTP status with `requests.head()` (faster than GET)
+  4. Parallel processing with ThreadPoolExecutor for speed
+  5. If broken links found (301/404), auto-reset content to pending for regeneration
+  6. Store validation results in JSONB column for audit trail
+- **Benefits**:
+  - Automated quality control for product links
+  - Parallel validation speeds up large batches
+  - Historical tracking of broken links
+  - Auto-recovery workflow (reset to pending)
+- **Example**:
+```python
+from bs4 import BeautifulSoup
+import requests
+from concurrent.futures import ThreadPoolExecutor
+
+def validate_content_links(content):
+    soup = BeautifulSoup(content, 'html.parser')
+    links = [link['href'] for link in soup.find_all('a', href=True) if link['href'].startswith('/')]
+
+    broken_links = []
+    for link in links:
+        full_url = 'https://www.beslist.nl' + link
+        response = requests.head(full_url, allow_redirects=False, timeout=10)
+        if response.status_code in [301, 404]:
+            broken_links.append({'url': link, 'status_code': response.status_code})
+
+    return {'broken_links': broken_links, 'has_broken_links': len(broken_links) > 0}
+
+# Parallel validation
+with ThreadPoolExecutor(max_workers=3) as executor:
+    results = list(executor.map(validate_single_content, content_items))
+```
+- **Location**: backend/link_validator.py, backend/main.py - `/api/validate-links` endpoint
+
 ---
-_Last updated: 2025-10-04_
+_Last updated: 2025-10-07_

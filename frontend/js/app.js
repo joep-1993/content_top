@@ -1,6 +1,6 @@
 // Vanilla JavaScript - no build tools, no transpilation!
 
-const API_BASE = 'http://localhost:8001';
+const API_BASE = 'http://localhost:8003';
 
 // Check system status on load
 window.addEventListener('DOMContentLoaded', () => {
@@ -443,5 +443,103 @@ async function exportJSON() {
         window.location.href = `${API_BASE}/api/export/json`;
     } catch (error) {
         alert(`Export failed: ${error.message}`);
+    }
+}
+
+// Validate links function
+async function validateLinks() {
+    const validateBtn = document.getElementById('validateBtn');
+    const resultDiv = document.getElementById('validationResult');
+    const batchSizeInput = document.getElementById('validationBatchSize');
+    const parallelWorkersInput = document.getElementById('validationParallelWorkers');
+    const batchSize = parseInt(batchSizeInput.value) || 10;
+    const parallelWorkers = parseInt(parallelWorkersInput.value) || 3;
+
+    if (batchSize < 1 || batchSize > 100) {
+        alert('Batch size must be between 1 and 100');
+        return;
+    }
+
+    if (parallelWorkers < 1 || parallelWorkers > 10) {
+        alert('Parallel workers must be between 1 and 10');
+        return;
+    }
+
+    validateBtn.disabled = true;
+    validateBtn.textContent = 'Validating...';
+    resultDiv.innerHTML = `<div class="alert alert-info">Validating links in ${batchSize} content items with ${parallelWorkers} parallel workers...</div>`;
+
+    try {
+        const response = await fetch(`${API_BASE}/api/validate-links?batch_size=${batchSize}&parallel_workers=${parallelWorkers}`, {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (data.status === 'complete' && data.validated === 0) {
+            resultDiv.innerHTML = `
+                <div class="alert alert-warning">
+                    <strong>No content to validate</strong><br>
+                    ${data.message}
+                </div>
+            `;
+        } else {
+            let summaryHtml = `
+                <div class="alert alert-${data.moved_to_pending > 0 ? 'warning' : 'success'}">
+                    <strong>Validation Complete</strong><br>
+                    Validated: ${data.validated} items<br>
+                    Moved to pending (broken links): ${data.moved_to_pending}
+                </div>
+            `;
+
+            // Show details for items with broken links
+            if (data.results && data.results.length > 0) {
+                summaryHtml += '<div class="mt-3"><strong>Results:</strong></div><ul class="list-group mt-2">';
+
+                data.results.forEach(r => {
+                    let badgeClass = r.moved_to_pending ? 'danger' : 'success';
+                    let statusText = r.moved_to_pending ? 'Moved to Pending' : 'Valid';
+
+                    summaryHtml += `
+                        <li class="list-group-item">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div style="flex: 1;">
+                                    <span class="badge bg-${badgeClass}">${statusText}</span>
+                                    <small class="text-muted d-block mt-1" style="word-break: break-all;">${r.url}</small>
+                                    <small>Links: ${r.total_links} total</small>
+                                    ${r.broken_links_count > 0 ? `
+                                        <div class="mt-2">
+                                            <strong class="text-danger">Broken Links (${r.broken_links_count}):</strong>
+                                            <ul class="small mt-1">
+                                                ${r.broken_links.map(bl => `
+                                                    <li>
+                                                        <code>${bl.url}</code>
+                                                        <span class="badge bg-danger">${bl.status_code}</span>
+                                                        ${bl.status_text}
+                                                    </li>
+                                                `).join('')}
+                                            </ul>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        </li>
+                    `;
+                });
+
+                summaryHtml += '</ul>';
+            }
+
+            resultDiv.innerHTML = summaryHtml;
+        }
+
+        // Refresh status counts
+        refreshStatus();
+
+    } catch (error) {
+        resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+    } finally {
+        validateBtn.disabled = false;
+        validateBtn.textContent = 'Validate Links';
     }
 }

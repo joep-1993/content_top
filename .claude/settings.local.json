@@ -6,7 +6,12 @@
       "Bash(test:*)",
       "Bash(docker-compose up:*)",
       "Bash(docker-compose exec:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(sudo rm:*)",
+      "Bash(docker-compose logs:*)",
+      "Bash(docker-compose:*)",
+      "Bash(curl:*)",
+      "Bash(docker cp:*)"
     ],
     "deny": [],
     "ask": []

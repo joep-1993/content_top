@@ -48,6 +48,19 @@ def init_db():
         )
     """)
 
+    # Create link validation tracking table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS pa.link_validation_results (
+            id SERIAL PRIMARY KEY,
+            content_url TEXT NOT NULL,
+            total_links INTEGER DEFAULT 0,
+            broken_links INTEGER DEFAULT 0,
+            valid_links INTEGER DEFAULT 0,
+            broken_link_details JSONB,
+            validated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
     # Thema Ads tables
     cur.execute("""
         CREATE TABLE IF NOT EXISTS thema_ads_jobs (
