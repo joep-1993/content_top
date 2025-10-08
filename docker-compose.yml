@@ -12,6 +12,14 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - AI_MODEL=${AI_MODEL:-gpt-4o-mini}
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/content_top
+      - USE_REDSHIFT_OUTPUT=${USE_REDSHIFT_OUTPUT:-false}
+      - REDSHIFT_HOST=${REDSHIFT_HOST}
+      - REDSHIFT_PORT=${REDSHIFT_PORT:-5439}
+      - REDSHIFT_DB=${REDSHIFT_DB}
+      - REDSHIFT_USER=${REDSHIFT_USER}
+      - REDSHIFT_PASSWORD=${REDSHIFT_PASSWORD}
+      - REDSHIFT_OUTPUT_SCHEMA=${REDSHIFT_OUTPUT_SCHEMA:-pa}
+      - REDSHIFT_OUTPUT_TABLE=${REDSHIFT_OUTPUT_TABLE:-content_urls_joep}
     depends_on:
       - db
     command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload

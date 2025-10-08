@@ -9,6 +9,25 @@ def get_db_connection():
         cursor_factory=RealDictCursor
     )
 
+def get_redshift_connection():
+    """Get connection to Redshift for output operations"""
+    return psycopg2.connect(
+        host=os.getenv("REDSHIFT_HOST"),
+        port=os.getenv("REDSHIFT_PORT", "5439"),
+        dbname=os.getenv("REDSHIFT_DB"),
+        user=os.getenv("REDSHIFT_USER"),
+        password=os.getenv("REDSHIFT_PASSWORD"),
+        cursor_factory=RealDictCursor,
+        connect_timeout=10
+    )
+
+def get_output_connection():
+    """Get connection for output operations - Redshift or PostgreSQL based on config"""
+    use_redshift = os.getenv("USE_REDSHIFT_OUTPUT", "false").lower() == "true"
+    if use_redshift:
+        return get_redshift_connection()
+    return get_db_connection()
+
 def init_db():
     """Initialize database tables"""
     conn = get_db_connection()

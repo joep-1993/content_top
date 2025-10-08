@@ -2,7 +2,7 @@
 _Project structure and technical specs. Update when: creating files, adding dependencies, defining schemas._
 
 ## Stack
-Backend: FastAPI (Python 3.11, ThreadPoolExecutor for parallel processing) | Frontend: Bootstrap 5 + Vanilla JS | Database: PostgreSQL 15 | AI: OpenAI API | Deploy: Docker + docker-compose | Google Ads: AsyncIO + Batch API (v28) | Automation: Docker multi-stage builds
+Backend: FastAPI (Python 3.11, ThreadPoolExecutor for parallel processing) | Frontend: Bootstrap 5 + Vanilla JS | Database: PostgreSQL 15 (local tracking) + AWS Redshift (data storage) | AI: OpenAI API | Deploy: Docker + docker-compose | Google Ads: AsyncIO + Batch API (v28) | Automation: Docker multi-stage builds
 
 ## Directory Structure
 ```
@@ -16,7 +16,8 @@ content_top/
 ├── backend/
 │   ├── main.py           # FastAPI app with CORS & Thema Ads endpoints
 │   │                     # CSV parsing: empty row handling, dash removal, optional columns
-│   ├── database.py       # PostgreSQL connection & schema initialization
+│   ├── database.py       # Hybrid database connections (PostgreSQL + Redshift)
+│   │                     # Functions: get_db_connection(), get_redshift_connection(), get_output_connection()
 │   │                     # Schema: campaign_id and campaign_name columns added
 │   ├── gpt_service.py    # AI integration with optimized prompts for concise hyperlink text (3-5 words max)
 │   ├── link_validator.py # Hyperlink validation with HTTP status checking (301/404 detection)
@@ -58,6 +59,19 @@ OPENAI_API_KEY=sk-...  # Your OpenAI API key
 DATABASE_URL=postgresql://postgres:postgres@db:5432/myapp
 AI_MODEL=gpt-4o-mini  # Or other OpenAI model
 ```
+
+### Required (Redshift - Output Storage)
+```bash
+USE_REDSHIFT_OUTPUT=true  # Enable Redshift for output tables
+REDSHIFT_HOST=production-redshift.amazonaws.com
+REDSHIFT_PORT=5439
+REDSHIFT_DB=database_name
+REDSHIFT_USER=username
+REDSHIFT_PASSWORD=password
+REDSHIFT_OUTPUT_SCHEMA=pa  # Schema for output tables
+REDSHIFT_OUTPUT_TABLE=content_urls_joep  # Content storage table
+```
+**Important**: Keep Redshift credentials in separate file (e.g., `redshift`) and add to `.gitignore`
 
 ### Required (Google Ads - thema_ads_optimized)
 ```bash
@@ -108,6 +122,16 @@ SERVICE_ACCOUNT_FILE=C:\Users\YourName\Downloads\Python\service-account.json
 - **Thema Ads Integration**: Google Ads automation features are integrated into the main application (backend/thema_ads_service.py, frontend/js/thema-ads.js) rather than being a separate directory
 
 ## Database Schema
+
+### Architecture: Hybrid (PostgreSQL + Redshift)
+**Local PostgreSQL** (tracking & temporary):
+- `pa.jvs_seo_werkvoorraad_kopteksten_check` - Processing status tracking
+- `pa.link_validation_results` - Link validation history
+- Thema Ads tables (jobs, job_items, input_data)
+
+**Redshift** (persistent data):
+- `pa.jvs_seo_werkvoorraad` - Work queue (166K URLs)
+- `pa.content_urls_joep` - Generated content (columns: url, content)
 
 ### Thema Ads Job Tracking
 ```sql
@@ -341,4 +365,4 @@ Frontend has two tabs:
   - Original error message for actual failures
 
 ---
-_Last updated: 2025-10-07_
+_Last updated: 2025-10-08_

@@ -294,6 +294,35 @@ with open(csv_path, 'r', encoding='utf-8-sig') as f:
 ```
 - **Location**: backend/import_content.py
 
+### Hybrid Database Architecture (Local PostgreSQL + Cloud Redshift)
+- **Pattern**: Split database responsibilities between local PostgreSQL and cloud Redshift
+- **Use Case**: Large-scale data processing where some tables benefit from cloud storage
+- **Architecture**:
+  - **Local PostgreSQL**: Fast tracking tables (processing status, temporary data)
+  - **Redshift**: Persistent data tables (work queue, generated content)
+- **Implementation**:
+  1. Create separate connection functions: `get_db_connection()` (local), `get_redshift_connection()` (cloud), `get_output_connection()` (smart router)
+  2. Route operations based on table purpose: tracking → local, data → Redshift
+  3. Handle schema differences (e.g., Redshift table has no `created_at` column)
+  4. Sync operations across both databases (delete from both, update in Redshift + track locally)
+- **Benefits**:
+  - Local tracking is fast (no network latency)
+  - Centralized data in Redshift (accessible to other systems)
+  - Can scale independently (add Redshift replicas without affecting local operations)
+  - Redshift optimized for large datasets (166K+ URLs)
+- **Environment Variables**:
+  ```bash
+  # Redshift configuration
+  USE_REDSHIFT_OUTPUT=true
+  REDSHIFT_HOST=production-redshift.amazonaws.com
+  REDSHIFT_PORT=5439
+  REDSHIFT_DB=database_name
+  REDSHIFT_USER=username
+  REDSHIFT_PASSWORD=password
+  ```
+- **Important**: Redshift credentials should be in `.gitignore` (use separate config file)
+- **Location**: backend/database.py (lines 12-29), backend/main.py (throughout)
+
 ### Hyperlink Validation with Status Code Checking
 - **Pattern**: Validate hyperlinks in generated content by checking HTTP status codes (301/404)
 - **Use Case**: Quality control for AI-generated content - detect broken product links
@@ -338,5 +367,22 @@ with ThreadPoolExecutor(max_workers=3) as executor:
 ```
 - **Location**: backend/link_validator.py, backend/main.py - `/api/validate-links` endpoint
 
+### CloudFront WAF Blocking Bot Traffic
+- **Problem**: Website returns HTTP 403/405 errors for certain URLs when scraped
+- **Cause**: CloudFront (AWS CDN) Web Application Firewall detecting automated traffic
+- **Symptoms**:
+  - Some category pages (e.g., `/products/accessoires/`) blocked regardless of User-Agent
+  - Residential IP addresses more likely to be blocked than datacenter IPs
+- **Troubleshooting**:
+  1. Check public IP: `curl -s https://api.ipify.org`
+  2. Test URL directly: `curl -I -A "User-Agent" "https://example.com"`
+  3. Verify IP details: `curl -s https://ipinfo.io/YOUR_IP`
+- **Solutions**:
+  - Whitelist scraper IP in CloudFront WAF rules
+  - Use slower request rates to avoid rate limiting
+  - Contact IT department to adjust WAF settings
+  - Consider using datacenter IPs instead of residential
+- **Example**: IP `87.212.193.148` (Odido Netherlands residential FTTH) blocked by beslist.nl CloudFront
+
 ---
-_Last updated: 2025-10-07_
+_Last updated: 2025-10-08_
