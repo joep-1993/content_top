@@ -254,17 +254,13 @@ async def get_status():
         output_cur.execute("SELECT COUNT(*) as total FROM pa.jvs_seo_werkvoorraad")
         total = output_cur.fetchone()['total']
 
-        # Get local tracking for all stats (source of truth for processed/skipped/failed)
+        # Get processed URLs (actual content records in Redshift)
+        output_cur.execute("SELECT COUNT(*) as processed FROM pa.content_urls_joep")
+        processed = output_cur.fetchone()['processed']
+
+        # Get local tracking for skipped/failed stats
         conn = get_db_connection()
         cur = conn.cursor()
-
-        # Get processed URLs (successful) from local tracking
-        cur.execute("""
-            SELECT COUNT(*) as processed
-            FROM pa.jvs_seo_werkvoorraad_kopteksten_check
-            WHERE status = 'success'
-        """)
-        processed = cur.fetchone()['processed']
 
         # Get skipped URLs
         cur.execute("""
