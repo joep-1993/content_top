@@ -20,6 +20,8 @@ services:
       - REDSHIFT_PASSWORD=${REDSHIFT_PASSWORD}
       - REDSHIFT_OUTPUT_SCHEMA=${REDSHIFT_OUTPUT_SCHEMA:-pa}
       - REDSHIFT_OUTPUT_TABLE=${REDSHIFT_OUTPUT_TABLE:-content_urls_joep}
+      - HTTP_PROXY=${HTTP_PROXY:-}
+      - HTTPS_PROXY=${HTTPS_PROXY:-}
     depends_on:
       - db
     command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload

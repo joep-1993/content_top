@@ -2,9 +2,21 @@ import requests
 from bs4 import BeautifulSoup
 from typing import List, Dict, Optional
 import re
+import os
 
 # User agent as specified
 USER_AGENT = "n8n-bot-jvs"
+
+# Proxy configuration (optional)
+def get_proxy_config():
+    """Get proxy configuration from environment variables"""
+    proxy_url = os.getenv("HTTP_PROXY") or os.getenv("HTTPS_PROXY")
+    if proxy_url:
+        return {
+            'http': proxy_url,
+            'https': proxy_url
+        }
+    return None
 
 def clean_url(url: str) -> str:
     """Remove query parameters from URL"""
@@ -31,9 +43,10 @@ def scrape_product_page(url: str) -> Optional[Dict]:
         # Clean URL first
         clean = clean_url(url)
 
-        # Make HTTP request with custom user agent
+        # Make HTTP request with custom user agent and optional proxy
         headers = {"User-Agent": USER_AGENT}
-        response = requests.get(clean, headers=headers, timeout=30)
+        proxies = get_proxy_config()
+        response = requests.get(clean, headers=headers, proxies=proxies, timeout=30)
 
         # Check status code
         if response.status_code != 200:
