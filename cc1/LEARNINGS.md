@@ -106,6 +106,18 @@ docker-compose exec app python -m backend.import_content
 ```
 - **Location**: CSV import workflow for bulk content upload
 
+### Cloudflare Rate Limit Persistence After Aggressive Scraping
+- **Problem**: Even after reducing scraping delay from 0.05-0.1s to 0.5-0.7s, all URLs still fail with HTTP 202 responses
+- **Cause**: Cloudflare's rate limit window is cumulative - once triggered by aggressive scraping, the IP remains "on probation" for 15-30 minutes regardless of subsequent request rate
+- **Symptoms**:
+  - Initial aggressive scraping (0.05-0.1s delay) triggers rate limiting
+  - All subsequent requests get HTTP 202 (queuing) even with conservative delay (0.5-0.7s)
+  - Persists for 15-30 minutes after last aggressive request
+- **Solution**: Wait 15-30 minutes after rate limit trigger before resuming scraping. The conservative delay will work properly once the rate limit window fully resets.
+- **Key Learning**: With whitelisted IPs, Cloudflare doesn't remove rate limits - only captchas. Rate limiting still applies and has a longer cooldown period than expected.
+- **Recommended Delay**: 0.5-0.7s is the safe sweet spot that prevents triggering rate limits while maintaining reasonable speed
+- **Location**: backend/scraper_service.py (lines 70-73)
+
 ## Git Commands
 ```bash
 # SSH Setup

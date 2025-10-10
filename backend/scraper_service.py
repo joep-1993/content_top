@@ -67,9 +67,9 @@ def scrape_product_page(url: str) -> Optional[Dict]:
         # Clean URL first
         clean = clean_url(url)
 
-        # Small delay to prevent Cloudflare 202 queuing (0.2-0.3 second)
+        # Conservative delay to prevent Cloudflare 202 queuing (0.5-0.7 second)
         # Even with whitelisted IP, Cloudflare throttles very fast requests
-        delay = 0.2 + random.uniform(0, 0.1)
+        delay = 0.5 + random.uniform(0, 0.2)
         time.sleep(delay)
 
         # Make HTTP request with browser-like headers using persistent session
