@@ -3,7 +3,7 @@ services:
     container_name: content_top_app
     build: .
     ports:
-      - "8003:8000"  # Access at http://localhost:8003
+      - "8003:8000"
     volumes:
       # Mount for live editing - no build needed!
       - ./backend:/app/backend

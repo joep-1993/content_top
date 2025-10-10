@@ -26,7 +26,8 @@ content_top/
 │   │                          # Features: delete job, campaign info fetching at runtime
 │   ├── thema_ads_schema.sql  # Database schema for job tracking
 │   ├── schema.sql        # SEO workflow database schema
-│   └── scraper_service.py    # Web scraping utilities
+│   └── scraper_service.py    # Web scraping utilities (bypasses VPN via Windows routing)
+├── openvpn               # OpenVPN client config (with pull-filter for split tunneling)
 ├── frontend/
 │   ├── index.html        # Main page (Bootstrap CDN)
 │   ├── css/
@@ -50,6 +51,21 @@ content_top/
 ├── sample_input.csv    # Example CSV for Thema Ads upload
 └── seo_urls            # Input file with URLs to process (75,858 URLs)
 ```
+
+## Network Configuration
+
+### VPN Bypass for Whitelisted IP
+The scraper requires IP 87.212.193.148 (whitelisted by beslist.nl) but company VPN routes through 94.142.210.226. Solution: Windows static route with lower metric to bypass VPN for CloudFront IPs (65.9.0.0/16).
+
+**Setup (one-time, as Administrator):**
+```cmd
+# Find your gateway: route print 0.0.0.0
+# Add persistent route (replace 192.168.1.1 with your gateway, 10 with your Wi-Fi interface)
+route delete 65.9.0.0
+route add -p 65.9.0.0 mask 255.255.0.0 192.168.1.1 metric 1 if 10
+```
+
+**Result**: VPN stays connected (for Redshift access), but beslist.nl traffic uses whitelisted IP. Route persists across reboots. See LEARNINGS.md for detailed explanation and troubleshooting.
 
 ## Environment Variables
 
@@ -365,4 +381,4 @@ Frontend has two tabs:
   - Original error message for actual failures
 
 ---
-_Last updated: 2025-10-08_
+_Last updated: 2025-10-10_

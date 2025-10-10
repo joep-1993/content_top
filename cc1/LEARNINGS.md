@@ -384,5 +384,96 @@ with ThreadPoolExecutor(max_workers=3) as executor:
   - Consider using datacenter IPs instead of residential
 - **Example**: IP `87.212.193.148` (Odido Netherlands residential FTTH) blocked by beslist.nl CloudFront
 
+### VPN Routing Bypass for Whitelisted IP (Windows + WSL2/Docker)
+- **Problem**: Company VPN routes all traffic through different IP, but scraper needs to use whitelisted IP (87.212.193.148) for beslist.nl
+- **Scenario**:
+  - Without VPN: Machine uses 87.212.193.148 (whitelisted)
+  - With VPN: All traffic routes through 94.142.210.226 (not whitelisted)
+  - Need: VPN connected for work (Redshift access), but scraper uses whitelisted IP
+- **Failed Approaches**:
+  1. OpenVPN client-side routing (`route X.X.X.X net_gateway`) - Error: "option 'route' cannot be used in this context [PUSH-OPTIONS]"
+  2. OpenVPN `route-nopull` - `net_gateway` keyword doesn't work client-side
+  3. OpenVPN `pull-filter ignore "redirect-gateway"` - VPN still captured CloudFront traffic
+  4. Privoxy on Windows - Proxy itself routes through VPN
+  5. Docker `network_mode: "host"` - Still uses VPN routing
+- **Working Solution**: Windows Static Route with Lower Metric
+  ```cmd
+  # Step 1: Find your default gateway (before/during VPN)
+  route print 0.0.0.0
+  # Look for physical adapter (Ethernet/Wi-Fi), note Gateway IP (e.g., 192.168.1.1)
+
+  # Step 2: Add persistent route with interface specification (as Administrator)
+  route delete 65.9.0.0
+  route add -p 65.9.0.0 mask 255.255.0.0 192.168.1.1 metric 1 if 10
+  # Replace 192.168.1.1 with your gateway
+  # Replace 10 with your Wi-Fi/Ethernet interface number from 'route print'
+
+  # Step 3: Verify route is active
+  route print 65.9.0.0
+  # Should show metric 1 in Active Routes
+
+  # Step 4: Restart WSL2 to pick up new routing
+  # In PowerShell: wsl --shutdown
+  # Then restart Docker Desktop
+  ```
+- **Why It Works**:
+  - Windows routing is hierarchical: lower metric = higher priority
+  - VPN routes typically have metric 25-50
+  - Our route with metric 1 takes precedence for CloudFront IPs (65.9.0.0/16)
+  - WSL2 and Docker inherit Windows routing table
+  - Route is persistent (`-p` flag) - survives reboots
+  - Interface specification (`if 10`) ensures it binds to physical adapter
+- **Verification**:
+  ```bash
+  # From WSL2/Docker
+  curl https://api.ipify.org          # Should show whitelisted IP
+  curl https://www.beslist.nl/health  # Should show same IP
+  ```
+- **Result**: VPN stays connected, Redshift accessible, beslist.nl sees whitelisted IP (87.212.193.148)
+
+### OpenVPN Split Tunneling Limitations on Windows Client
+- **Problem**: Cannot configure OpenVPN split tunneling from client-side config file
+- **Root Cause**: OpenVPN server pushes routes that override client-side directives
+- **Why Client-Side Routes Fail**:
+  1. `route X.X.X.X net_gateway` requires server push context - error: "cannot be used in this context [PUSH-OPTIONS]"
+  2. `net_gateway` keyword only works in server-pushed routes, not client config
+  3. `route-nopull` removes ALL routes including necessary internal network routes
+  4. `pull-filter` can filter server options but Windows VPN adapter still captures traffic at OS level
+- **Key Learning**: For corporate VPNs, split tunneling must be configured at:
+  - **Server level** (requires admin/IT): Server pushes specific routes instead of redirect-gateway
+  - **OS routing level** (can do yourself): Add Windows static routes with lower metric (see VPN Routing Bypass pattern above)
+- **Alternative if Server-Side Split Tunneling Available**:
+  - Server config: `push "route 10.0.0.0 255.0.0.0"` instead of `push "redirect-gateway def1"`
+  - Client automatically gets split tunnel without config changes
+
+### Privoxy Proxy Configuration for Docker/WSL2 Access
+- **Problem**: Docker containers in WSL2 cannot connect to Privoxy running on Windows localhost
+- **Cause**: Privoxy listens on 127.0.0.1:8118 by default, which only accepts local connections
+- **Solution**: Configure Privoxy to accept connections from WSL2 network
+  1. Edit Privoxy config file (usually `C:\Program Files\Privoxy\config.txt`)
+  2. Change: `listen-address  127.0.0.1:8118`
+  3. To: `listen-address  0.0.0.0:8118` (all interfaces) OR `listen-address  172.21.160.1:8118` (WSL2 gateway only)
+  4. Restart Privoxy service
+- **Finding WSL2 Gateway IP**: `ip route | grep default | awk '{print $3}'` (from WSL2, returns Windows host IP like 172.21.160.1)
+- **Docker Proxy Config**:
+  ```python
+  session.proxies = {
+      'http': 'http://172.21.160.1:8118',
+      'https': 'http://172.21.160.1:8118'
+  }
+  ```
+- **Note**: In this project, we ultimately used Windows static routing instead of Privoxy (more reliable)
+
+### WSL2 IP Gateway Discovery
+- **Problem**: Need to access Windows services (like Privoxy) from Docker containers running in WSL2
+- **Solution**: Windows host is accessible via WSL2's default gateway IP
+- **Command**: `ip route | grep default | awk '{print $3}'`
+- **Example Output**: `172.21.160.1` (this is the Windows host IP from WSL2 perspective)
+- **Common Use Cases**:
+  - Connecting to Windows-hosted proxy servers
+  - Accessing Windows file shares from containers
+  - Connecting to Windows-hosted databases or services
+- **Important**: This IP changes if network configuration changes, so don't hardcode in committed code
+
 ---
-_Last updated: 2025-10-08_
+_Last updated: 2025-10-10_

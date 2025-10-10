@@ -2,20 +2,44 @@ import requests
 from bs4 import BeautifulSoup
 from typing import List, Dict, Optional
 import re
-import os
+import time
+import random
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
-# User agent as specified
-USER_AGENT = "n8n-bot-jvs"
+# User agent - Chrome browser to work with whitelisted IP
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-# Proxy configuration (optional)
-def get_proxy_config():
-    """Get proxy configuration from environment variables"""
-    proxy_url = os.getenv("HTTP_PROXY") or os.getenv("HTTPS_PROXY")
-    if proxy_url:
-        return {
-            'http': proxy_url,
-            'https': proxy_url
-        }
+# Create a persistent session with retry logic
+def create_session():
+    """Create a requests session with retry logic and connection pooling"""
+    session = requests.Session()
+
+    # Configure retries
+    retry_strategy = Retry(
+        total=3,
+        backoff_factor=1,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["GET"]
+    )
+
+    adapter = HTTPAdapter(max_retries=retry_strategy, pool_connections=1, pool_maxsize=1)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+
+    return session
+
+# Global session for connection reuse
+_session = create_session()
+
+def get_scraper_ip() -> Optional[str]:
+    """Get the IP address used by the scraper for outbound requests"""
+    try:
+        response = requests.get("https://api.ipify.org?format=json", timeout=5)
+        if response.status_code == 200:
+            return response.json().get("ip")
+    except Exception as e:
+        print(f"Failed to get scraper IP: {str(e)}")
     return None
 
 def clean_url(url: str) -> str:
@@ -43,10 +67,34 @@ def scrape_product_page(url: str) -> Optional[Dict]:
         # Clean URL first
         clean = clean_url(url)
 
-        # Make HTTP request with custom user agent and optional proxy
-        headers = {"User-Agent": USER_AGENT}
-        proxies = get_proxy_config()
-        response = requests.get(clean, headers=headers, proxies=proxies, timeout=30)
+        # Add significant delay to avoid rate limiting (5-7 seconds with random jitter)
+        delay = 5 + random.uniform(0, 2)
+        time.sleep(delay)
+
+        # Make HTTP request with browser-like headers using persistent session
+        headers = {
+            "User-Agent": USER_AGENT,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "nl-NL,nl;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Accept-Encoding": "gzip, deflate, br",
+            "DNT": "1",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none"
+        }
+        response = _session.get(clean, headers=headers, timeout=30)
+
+        # Handle 202 (Cloudflare queuing) - retry with exponential backoff
+        retry_count = 0
+        max_retries = 3
+        while response.status_code == 202 and retry_count < max_retries:
+            retry_count += 1
+            wait_time = 5 * (2 ** (retry_count - 1))  # 5s, 10s, 20s
+            print(f"Got 202 for {clean}, retry {retry_count}/{max_retries} after {wait_time}s...")
+            time.sleep(wait_time)
+            response = _session.get(clean, headers=headers, timeout=30)
 
         # Check status code
         if response.status_code != 200:
