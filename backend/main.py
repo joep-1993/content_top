@@ -50,123 +50,98 @@ async def generate_text(prompt: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 def process_single_url(url: str):
-    """Process a single URL - runs in thread pool"""
+    """Process a single URL - runs in thread pool
+    Returns tuple: (result_dict, redshift_operations)
+    """
     result = {"url": url, "status": "pending"}
+    redshift_ops = []  # Store Redshift operations to batch later
     conn = None
+    final_status = None
+    final_reason = None
 
     try:
-        # Use local PostgreSQL for tracking
-        conn = get_db_connection()
-        cur = conn.cursor()
-
-        # Add to tracking table (local)
-        cur.execute("""
-            INSERT INTO pa.jvs_seo_werkvoorraad_kopteksten_check (url, status)
-            VALUES (%s, 'pending')
-        """, (url,))
-        conn.commit()
-
-        # Scrape the URL
+        # Scrape the URL first (no DB operations yet)
         scraped_data = scrape_product_page(url)
 
         if not scraped_data:
-            # Update status to failed (local)
-            cur.execute("""
-                UPDATE pa.jvs_seo_werkvoorraad_kopteksten_check
-                SET status = 'failed', skip_reason = 'scraping_failed'
-                WHERE url = %s
-            """, (url,))
-            conn.commit()
+            final_status = 'failed'
+            final_reason = 'scraping_failed'
             result["status"] = "failed"
             result["reason"] = "scraping_failed"
-            return result
-
-        # Check if products found
-        if not scraped_data['products'] or len(scraped_data['products']) == 0:
-            # Update status to skipped (local)
-            cur.execute("""
-                UPDATE pa.jvs_seo_werkvoorraad_kopteksten_check
-                SET status = 'skipped', skip_reason = 'no_products_found'
-                WHERE url = %s
-            """, (url,))
-            conn.commit()
+        elif not scraped_data['products'] or len(scraped_data['products']) == 0:
+            final_status = 'skipped'
+            final_reason = 'no_products_found'
             result["status"] = "skipped"
             result["reason"] = "no_products_found"
-            return result
-
-        # Generate AI content
-        try:
-            ai_content = generate_product_content(
-                scraped_data['h1_title'],
-                scraped_data['products']
-            )
-
-            # Sanitize content for SQL
-            sanitized = sanitize_content(ai_content)
-
-            # Check if content has valid links
-            if not check_content_has_valid_links(ai_content):
-                # Update status to failed (local)
-                cur.execute("""
-                    UPDATE pa.jvs_seo_werkvoorraad_kopteksten_check
-                    SET status = 'failed', skip_reason = 'no_valid_links'
-                    WHERE url = %s
-                """, (url,))
-                conn.commit()
-                result["status"] = "failed"
-                result["reason"] = "no_valid_links"
-                return result
-
-            # Write to Redshift tables
-            output_conn = get_output_connection()
-            output_cur = output_conn.cursor()
+        else:
+            # Generate AI content
             try:
-                # Insert content to Redshift
-                output_cur.execute("""
-                    INSERT INTO pa.content_urls_joep (url, content)
-                    VALUES (%s, %s)
-                """, (url, sanitized))
+                ai_content = generate_product_content(
+                    scraped_data['h1_title'],
+                    scraped_data['products']
+                )
 
-                # Update werkvoorraad in Redshift
-                output_cur.execute("""
-                    UPDATE pa.jvs_seo_werkvoorraad
-                    SET kopteksten = 1
-                    WHERE url = %s
-                """, (url,))
+                # Sanitize content for SQL
+                sanitized = sanitize_content(ai_content)
 
-                output_conn.commit()
-            finally:
-                output_cur.close()
-                output_conn.close()
+                # Check if content has valid links
+                if not check_content_has_valid_links(ai_content):
+                    final_status = 'failed'
+                    final_reason = 'no_valid_links'
+                    result["status"] = "failed"
+                    result["reason"] = "no_valid_links"
+                else:
+                    # Collect Redshift operations for batch execution
+                    redshift_ops.append(('insert_content', url, sanitized))
+                    redshift_ops.append(('update_werkvoorraad', url))
 
-            # Update status to success (local tracking)
+                    final_status = 'success'
+                    result["status"] = "success"
+                    result["content_preview"] = ai_content[:100] + "..."
+
+            except Exception as e:
+                final_status = 'failed'
+                final_reason = f"ai_generation_error: {str(e)}"
+                result["status"] = "failed"
+                result["reason"] = f"ai_generation_error: {str(e)}"
+
+        # Single DB transaction at the end with final status
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        if final_reason:
             cur.execute("""
-                UPDATE pa.jvs_seo_werkvoorraad_kopteksten_check
-                SET status = 'success'
-                WHERE url = %s
-            """, (url,))
-
-            conn.commit()
-            result["status"] = "success"
-            result["content_preview"] = ai_content[:100] + "..."
-            return result
-
-        except Exception as e:
-            # Update status to failed (local tracking)
+                INSERT INTO pa.jvs_seo_werkvoorraad_kopteksten_check (url, status, skip_reason)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (url) DO UPDATE SET status = EXCLUDED.status, skip_reason = EXCLUDED.skip_reason
+            """, (url, final_status, final_reason))
+        else:
             cur.execute("""
-                UPDATE pa.jvs_seo_werkvoorraad_kopteksten_check
-                SET status = 'failed', skip_reason = %s
-                WHERE url = %s
-            """, (f"ai_generation_error: {str(e)}", url))
-            conn.commit()
-            result["status"] = "failed"
-            result["reason"] = f"ai_generation_error: {str(e)}"
-            return result
+                INSERT INTO pa.jvs_seo_werkvoorraad_kopteksten_check (url, status)
+                VALUES (%s, %s)
+                ON CONFLICT (url) DO UPDATE SET status = EXCLUDED.status, skip_reason = NULL
+            """, (url, final_status))
+
+        conn.commit()
+        return (result, redshift_ops)
 
     except Exception as e:
         result["status"] = "failed"
         result["reason"] = f"error: {str(e)}"
-        return result
+        # Try to record error in DB
+        try:
+            if not conn:
+                conn = get_db_connection()
+                cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO pa.jvs_seo_werkvoorraad_kopteksten_check (url, status, skip_reason)
+                VALUES (%s, 'failed', %s)
+                ON CONFLICT (url) DO UPDATE SET status = 'failed', skip_reason = EXCLUDED.skip_reason
+            """, (url, f"error: {str(e)}"))
+            conn.commit()
+        except:
+            pass  # If DB fails, just return the result
+        return (result, redshift_ops)
     finally:
         if conn:
             cur.close()
@@ -191,29 +166,29 @@ async def process_urls(batch_size: int = 2, parallel_workers: int = 1):
         output_conn = get_output_connection()
         output_cur = output_conn.cursor()
 
-        # Get local tracking
+        # Get successfully processed URLs - only these should be excluded
         local_conn = get_db_connection()
         local_cur = local_conn.cursor()
-        local_cur.execute("SELECT url FROM pa.jvs_seo_werkvoorraad_kopteksten_check")
-        processed_urls = [row['url'] for row in local_cur.fetchall()]
+        local_cur.execute("""
+            SELECT url FROM pa.jvs_seo_werkvoorraad_kopteksten_check
+            WHERE status = 'success'
+        """)
+        successfully_processed_urls = set(row['url'] for row in local_cur.fetchall())  # Use set for O(1) lookup
         local_cur.close()
         local_conn.close()
 
-        # Get unprocessed URLs from Redshift
-        if processed_urls:
-            placeholders = ','.join(['%s'] * len(processed_urls))
-            output_cur.execute(f"""
-                SELECT url FROM pa.jvs_seo_werkvoorraad
-                WHERE url NOT IN ({placeholders})
-                LIMIT %s
-            """, (*processed_urls, batch_size))
-        else:
-            output_cur.execute("""
-                SELECT url FROM pa.jvs_seo_werkvoorraad
-                LIMIT %s
-            """, (batch_size,))
+        # Fetch more URLs than needed, filter in Python (faster than complex SQL with large NOT IN)
+        # Fetch batch_size * 3 to account for already-processed URLs
+        output_cur.execute("""
+            SELECT url FROM pa.jvs_seo_werkvoorraad
+            WHERE kopteksten = 0
+            LIMIT %s
+        """, (batch_size * 3,))
 
-        rows = output_cur.fetchall()
+        all_rows = output_cur.fetchall()
+        # Filter out successfully processed URLs in Python (faster than SQL NOT IN with large lists)
+        # Failed and skipped URLs will be retried
+        rows = [row for row in all_rows if row['url'] not in successfully_processed_urls][:batch_size]
         output_cur.close()
         output_conn.close()
 
@@ -228,7 +203,51 @@ async def process_urls(batch_size: int = 2, parallel_workers: int = 1):
 
         # Process URLs in parallel using ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
-            results = list(executor.map(process_single_url, urls))
+            result_tuples = list(executor.map(process_single_url, urls))
+
+        # Separate results and Redshift operations
+        results = []
+        all_redshift_ops = []
+        for result, ops in result_tuples:
+            results.append(result)
+            all_redshift_ops.extend(ops)
+
+        # Batch execute all Redshift operations using executemany() for better performance
+        if all_redshift_ops:
+            output_conn = get_output_connection()
+            output_cur = output_conn.cursor()
+            try:
+                # Separate operations by type for batch execution
+                insert_content_data = []
+                update_werkvoorraad_urls = []
+
+                for op in all_redshift_ops:
+                    if op[0] == 'insert_content':
+                        _, url, content = op
+                        insert_content_data.append((url, content))
+                    elif op[0] == 'update_werkvoorraad':
+                        _, url = op
+                        update_werkvoorraad_urls.append((url,))
+
+                # Batch INSERT using executemany()
+                if insert_content_data:
+                    output_cur.executemany("""
+                        INSERT INTO pa.content_urls_joep (url, content)
+                        VALUES (%s, %s)
+                    """, insert_content_data)
+
+                # Batch UPDATE using executemany()
+                if update_werkvoorraad_urls:
+                    output_cur.executemany("""
+                        UPDATE pa.jvs_seo_werkvoorraad
+                        SET kopteksten = 1
+                        WHERE url = %s
+                    """, update_werkvoorraad_urls)
+
+                output_conn.commit()
+            finally:
+                output_cur.close()
+                output_conn.close()
 
         processed_count = sum(1 for r in results if r['status'] == 'success')
 
@@ -404,22 +423,22 @@ async def upload_urls(file: UploadFile = File(...)):
         if not urls:
             raise HTTPException(status_code=400, detail="No URLs found in file")
 
-        # Insert URLs into database (ignore duplicates)
-        conn = get_db_connection()
-        cur = conn.cursor()
+        # Insert URLs into Redshift work queue
+        output_conn = get_output_connection()
+        output_cur = output_conn.cursor()
 
         added_count = 0
         duplicate_count = 0
 
         for url in urls:
             try:
-                cur.execute("""
-                    INSERT INTO pa.jvs_seo_werkvoorraad (url)
-                    VALUES (%s)
+                output_cur.execute("""
+                    INSERT INTO pa.jvs_seo_werkvoorraad (url, kopteksten)
+                    VALUES (%s, 0)
                     ON CONFLICT (url) DO NOTHING
                 """, (url,))
 
-                if cur.rowcount > 0:
+                if output_cur.rowcount > 0:
                     added_count += 1
                 else:
                     duplicate_count += 1
@@ -428,9 +447,9 @@ async def upload_urls(file: UploadFile = File(...)):
                 # Skip invalid URLs
                 continue
 
-        conn.commit()
-        cur.close()
-        conn.close()
+        output_conn.commit()
+        output_cur.close()
+        output_conn.close()
 
         return {
             "status": "success",
@@ -523,27 +542,20 @@ async def validate_links(batch_size: int = 10, parallel_workers: int = 3):
         conn = get_db_connection()
         cur = conn.cursor()
 
-        # Get validated URLs from local tracking
+        # Get validated URLs efficiently using a set for O(1) lookup
         cur.execute("SELECT content_url FROM pa.link_validation_results")
-        validated_urls = [row['content_url'] for row in cur.fetchall()]
+        validated_urls_set = set(row['content_url'] for row in cur.fetchall())
 
-        # Get content to validate from Redshift (exclude already validated)
-        if validated_urls:
-            placeholders = ','.join(['%s'] * len(validated_urls))
-            output_cur.execute(f"""
-                SELECT url, content
-                FROM pa.content_urls_joep
-                WHERE url NOT IN ({placeholders})
-                LIMIT %s
-            """, (*validated_urls, batch_size))
-        else:
-            output_cur.execute("""
-                SELECT url, content
-                FROM pa.content_urls_joep
-                LIMIT %s
-            """, (batch_size,))
+        # Fetch more content than needed, filter in Python (faster than NOT IN)
+        output_cur.execute("""
+            SELECT url, content
+            FROM pa.content_urls_joep
+            LIMIT %s
+        """, (batch_size * 3 if validated_urls_set else batch_size,))
 
-        rows = output_cur.fetchall()
+        all_rows = output_cur.fetchall()
+        # Filter out already validated URLs in Python
+        rows = [row for row in all_rows if row['url'] not in validated_urls_set][:batch_size]
 
         if not rows:
             output_cur.close()

@@ -67,8 +67,9 @@ def scrape_product_page(url: str) -> Optional[Dict]:
         # Clean URL first
         clean = clean_url(url)
 
-        # Add significant delay to avoid rate limiting (5-7 seconds with random jitter)
-        delay = 5 + random.uniform(0, 2)
+        # Small delay to prevent Cloudflare 202 queuing (0.2-0.3 second)
+        # Even with whitelisted IP, Cloudflare throttles very fast requests
+        delay = 0.2 + random.uniform(0, 0.1)
         time.sleep(delay)
 
         # Make HTTP request with browser-like headers using persistent session
@@ -86,14 +87,11 @@ def scrape_product_page(url: str) -> Optional[Dict]:
         }
         response = _session.get(clean, headers=headers, timeout=30)
 
-        # Handle 202 (Cloudflare queuing) - retry with exponential backoff
-        retry_count = 0
-        max_retries = 3
-        while response.status_code == 202 and retry_count < max_retries:
-            retry_count += 1
-            wait_time = 5 * (2 ** (retry_count - 1))  # 5s, 10s, 20s
-            print(f"Got 202 for {clean}, retry {retry_count}/{max_retries} after {wait_time}s...")
-            time.sleep(wait_time)
+        # Handle 202 (Cloudflare queuing) - should be rare with whitelisted IP
+        # Only retry once with shorter wait time
+        if response.status_code == 202:
+            print(f"Got 202 for {clean}, retrying after 2s...")
+            time.sleep(2)
             response = _session.get(clean, headers=headers, timeout=30)
 
         # Check status code
@@ -101,8 +99,8 @@ def scrape_product_page(url: str) -> Optional[Dict]:
             print(f"Non-200 status code {response.status_code} for {clean}")
             return None
 
-        # Parse HTML
-        soup = BeautifulSoup(response.text, 'html.parser')
+        # Parse HTML with lxml (2-3x faster than html.parser)
+        soup = BeautifulSoup(response.text, 'lxml')
 
         # Extract h1 title
         h1_element = soup.select_one("h1.productsTitle--tHP5S")

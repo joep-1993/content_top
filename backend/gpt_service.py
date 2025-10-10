@@ -37,10 +37,14 @@ def create_product_recommendation_prompt(h1_title: str, products: List[Dict]) ->
     """
     Create the prompt for product recommendation content generation.
     Matches the n8n workflow prompt structure.
+    Optimized: limits to 30 products and truncates descriptions to reduce tokens.
     """
+    # Limit to 30 products max for faster AI processing
+    limited_products = products[:30]
+
     products_text = "\n".join([
-        f"Product {i + 1}\nTitle: {p['title']}\nUrl: {p['url']}\nContent: {p['listviewContent']}\n"
-        for i, p in enumerate(products)
+        f"Product {i + 1}\nTitle: {p['title']}\nUrl: {p['url']}\nContent: {p['listviewContent'][:150]}\n"  # Truncate to 150 chars
+        for i, p in enumerate(limited_products)
     ])
 
     prompt = f"""Opdracht
@@ -82,7 +86,7 @@ def generate_product_content(h1_title: str, products: List[Dict]) -> str:
     response = client.chat.completions.create(
         model=MODEL,
         messages=messages,
-        max_tokens=500,
+        max_tokens=300,  # Reduced from 500 - content is max 100 words (~130 tokens)
         temperature=0.7
     )
 

@@ -284,9 +284,9 @@ async function refreshStatus() {
                                 <small class="text-muted text-nowrap ms-2">${new Date(item.created_at).toLocaleString()}</small>
                             </div>
                             <div class="content-preview">
-                                <div class="mb-1 small" id="preview-${index}"></div>
+                                <div class="mb-1" style="font-size: 0.875rem;" id="preview-${index}"></div>
                                 <div class="full-content d-none" id="full-${index}">
-                                    <div class="mb-1 small"></div>
+                                    <div class="mb-1" style="font-size: 0.875rem;"></div>
                                 </div>
                                 ${needsExpand ? `
                                     <button class="btn btn-sm btn-link p-0" onclick="toggleContent(${index})">
@@ -304,7 +304,7 @@ async function refreshStatus() {
                 // Insert HTML content separately to avoid escaping issues
                 itemDiv.querySelector(`#preview-${index}`).innerHTML = shortContent + (needsExpand ? '...' : '');
                 if (needsExpand) {
-                    itemDiv.querySelector(`#full-${index} .small`).innerHTML = fullContent;
+                    itemDiv.querySelector(`#full-${index} > div`).innerHTML = fullContent;
                 }
 
                 recentDiv.appendChild(itemDiv);
@@ -370,7 +370,62 @@ async function uploadUrls() {
         resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
     } finally {
         uploadBtn.disabled = false;
-        uploadBtn.textContent = 'Upload URLs';
+        uploadBtn.textContent = 'Upload File';
+    }
+}
+
+// Upload manual URLs function
+async function uploadManualUrls() {
+    const textInput = document.getElementById('manualUrlInput');
+    const uploadBtn = document.getElementById('uploadManualBtn');
+    const resultDiv = document.getElementById('uploadResult');
+
+    const urlsText = textInput.value.trim();
+
+    if (!urlsText) {
+        resultDiv.innerHTML = '<div class="alert alert-warning">Please enter at least one URL</div>';
+        return;
+    }
+
+    uploadBtn.disabled = true;
+    uploadBtn.textContent = 'Adding...';
+    resultDiv.innerHTML = '<div class="alert alert-info">Adding URLs...</div>';
+
+    try {
+        // Convert text to file-like blob
+        const blob = new Blob([urlsText], { type: 'text/plain' });
+        const formData = new FormData();
+        formData.append('file', blob, 'manual-urls.txt');
+
+        const response = await fetch(`${API_BASE}/api/upload-urls`, {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            resultDiv.innerHTML = `
+                <div class="alert alert-success">
+                    <strong>${data.message}</strong><br>
+                    Total URLs entered: ${data.total_urls}<br>
+                    New URLs added: ${data.added}<br>
+                    Duplicates skipped: ${data.duplicates}
+                </div>
+            `;
+            // Clear text input
+            textInput.value = '';
+            // Refresh status
+            refreshStatus();
+        } else {
+            resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.detail}</div>`;
+        }
+
+    } catch (error) {
+        resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+    } finally {
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = 'Add URLs';
     }
 }
 
