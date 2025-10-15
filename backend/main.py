@@ -180,7 +180,7 @@ async def process_urls(batch_size: int = 2, parallel_workers: int = 1):
         # Fetch more URLs than needed, filter in Python (faster than complex SQL with large NOT IN)
         # Fetch batch_size * 3 to account for already-processed URLs
         output_cur.execute("""
-            SELECT url FROM pa.jvs_seo_werkvoorraad
+            SELECT url FROM pa.jvs_seo_werkvoorraad_shopping_season
             WHERE kopteksten = 0
             LIMIT %s
         """, (batch_size * 3,))
@@ -239,7 +239,7 @@ async def process_urls(batch_size: int = 2, parallel_workers: int = 1):
                 # Batch UPDATE using executemany()
                 if update_werkvoorraad_urls:
                     output_cur.executemany("""
-                        UPDATE pa.jvs_seo_werkvoorraad
+                        UPDATE pa.jvs_seo_werkvoorraad_shopping_season
                         SET kopteksten = 1
                         WHERE url = %s
                     """, update_werkvoorraad_urls)
@@ -270,7 +270,7 @@ async def get_status():
         output_cur = output_conn.cursor()
 
         # Get total URLs from Redshift
-        output_cur.execute("SELECT COUNT(*) as total FROM pa.jvs_seo_werkvoorraad")
+        output_cur.execute("SELECT COUNT(*) as total FROM pa.jvs_seo_werkvoorraad_shopping_season")
         total = output_cur.fetchone()['total']
 
         # Get processed URLs (actual content records in Redshift)
@@ -433,7 +433,7 @@ async def upload_urls(file: UploadFile = File(...)):
         for url in urls:
             try:
                 output_cur.execute("""
-                    INSERT INTO pa.jvs_seo_werkvoorraad (url, kopteksten)
+                    INSERT INTO pa.jvs_seo_werkvoorraad_shopping_season (url, kopteksten)
                     VALUES (%s, 0)
                     ON CONFLICT (url) DO NOTHING
                 """, (url,))
@@ -478,7 +478,7 @@ async def delete_result(url: str):
 
         # Reset kopteksten flag in werkvoorraad
         output_cur.execute("""
-            UPDATE pa.jvs_seo_werkvoorraad
+            UPDATE pa.jvs_seo_werkvoorraad_shopping_season
             SET kopteksten = 0
             WHERE url = %s
         """, (url,))
@@ -612,7 +612,7 @@ async def validate_links(batch_size: int = 10, parallel_workers: int = 3):
 
                 # Reset kopteksten flag
                 cur.execute("""
-                    UPDATE pa.jvs_seo_werkvoorraad
+                    UPDATE pa.jvs_seo_werkvoorraad_shopping_season
                     SET kopteksten = 0
                     WHERE url = %s
                 """, (content_url,))

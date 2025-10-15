@@ -26,7 +26,7 @@ content_top/
 │   │                          # Features: delete job, campaign info fetching at runtime
 │   ├── thema_ads_schema.sql  # Database schema for job tracking
 │   ├── schema.sql        # SEO workflow database schema
-│   └── scraper_service.py    # Web scraping utilities (bypasses VPN via Windows routing)
+│   └── scraper_service.py    # Web scraping utilities with 0.2-0.3s delay (bypasses VPN, balanced for Cloudflare)
 ├── openvpn               # OpenVPN client config (with pull-filter for split tunneling)
 ├── frontend/
 │   ├── index.html        # Main page (Bootstrap CDN)
@@ -73,7 +73,7 @@ route add -p 65.9.0.0 mask 255.255.0.0 192.168.1.1 metric 1 if 10
 ```bash
 OPENAI_API_KEY=sk-...  # Your OpenAI API key
 DATABASE_URL=postgresql://postgres:postgres@db:5432/myapp
-AI_MODEL=gpt-4o-mini  # Or other OpenAI model
+AI_MODEL=gpt-4o-mini  # Or other OpenAI model (max_tokens: 300 for 100-word content)
 ```
 
 ### Required (Redshift - Output Storage)
@@ -146,7 +146,7 @@ SERVICE_ACCOUNT_FILE=C:\Users\YourName\Downloads\Python\service-account.json
 - Thema Ads tables (jobs, job_items, input_data)
 
 **Redshift** (persistent data):
-- `pa.jvs_seo_werkvoorraad` - Work queue (166K URLs)
+- `pa.jvs_seo_werkvoorraad_shopping_season` - Work queue (72,992 URLs for shopping season)
 - `pa.content_urls_joep` - Generated content (columns: url, content)
 
 ### Thema Ads Job Tracking
@@ -198,7 +198,7 @@ CREATE TABLE thema_ads_input_data (
 );
 
 -- SEO workflow tables
-CREATE TABLE pa.jvs_seo_werkvoorraad (
+CREATE TABLE pa.jvs_seo_werkvoorraad_shopping_season (
     url VARCHAR(500) PRIMARY KEY,
     kopteksten INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -248,7 +248,7 @@ openai==1.35.0            # OpenAI API client
 httpx==0.25.2             # HTTP client (pinned for OpenAI compatibility)
 requests==2.31.0          # HTTP requests
 beautifulsoup4==4.12.3    # Web scraping
-lxml==5.1.0               # XML/HTML parsing
+lxml==5.1.0               # XML/HTML parsing (BeautifulSoup parser, 2-3x faster)
 
 # Database
 psycopg2-binary==2.9.9    # PostgreSQL adapter

@@ -10,6 +10,11 @@ _Tasks currently being worked on_
 ## Completed
 _Finished tasks (move here when done)_
 
+- [x] Switch input table to pa.jvs_seo_werkvoorraad_shopping_season (updated all 6 references in backend/main.py, reset tracking table with 72,992 URLs ready for processing) #claude-session:2025-10-15
+- [x] Optimize content generation performance (30-50% faster: 0.2-0.3s delay, lxml parser, 300 max_tokens, batched commits, executemany) #claude-session:2025-10-10
+- [x] Fix URL filtering to allow failed/skipped URL retries (filter only successful, add ON CONFLICT handling) #claude-session:2025-10-10
+- [x] Fix Recent Results font size issue (replace Bootstrap .small with explicit font-size) #claude-session:2025-10-10
+- [x] Add manual URL input field to Upload URLs (textarea with uploadManualUrls function) #claude-session:2025-10-10
 - [x] Configure VPN split tunneling to bypass scraper traffic to whitelisted IP (87.212.193.148) #claude-session:2025-10-10
 - [x] Integrate Redshift for output tables (pa.jvs_seo_werkvoorraad, pa.content_urls_joep) with hybrid architecture #claude-session:2025-10-08
 - [x] Clean up 1,903 URLs with numeric-only link text from Redshift, reset to pending #claude-session:2025-10-08
