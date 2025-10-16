@@ -7,6 +7,11 @@ Backend: FastAPI (Python 3.11, ThreadPoolExecutor for parallel processing) | Fro
 ## Directory Structure
 ```
 content_top/
+├── .claude/              # Claude Code configuration
+│   ├── commands/         # Custom slash commands
+│   │   ├── skip-permissions.md     # Toggle bypassPermissions mode
+│   │   └── restore-permissions.md  # Restore default permissions
+│   └── settings.local.json  # Local settings (git ignored)
 ├── cc1/                   # CC1 documentation
 │   ├── TASKS.md          # Task tracking
 │   ├── LEARNINGS.md      # Knowledge capture
@@ -26,7 +31,7 @@ content_top/
 │   │                          # Features: delete job, campaign info fetching at runtime
 │   ├── thema_ads_schema.sql  # Database schema for job tracking
 │   ├── schema.sql        # SEO workflow database schema
-│   └── scraper_service.py    # Web scraping utilities with 0.2-0.3s delay (bypasses VPN, balanced for Cloudflare)
+│   └── scraper_service.py    # Web scraping utilities with 0.2-0.3s delay, custom UA 'Beslist script voor SEO' (bypasses VPN, balanced for Cloudflare)
 ├── openvpn               # OpenVPN client config (with pull-filter for split tunneling)
 ├── frontend/
 │   ├── index.html        # Main page (Bootstrap CDN)

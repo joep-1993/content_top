@@ -7,8 +7,8 @@ import random
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-# User agent - Chrome browser to work with whitelisted IP
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+# User agent - Custom identifier for Beslist scraper
+USER_AGENT = "Beslist script voor SEO"
 
 # Create a persistent session with retry logic
 def create_session():

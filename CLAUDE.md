@@ -26,6 +26,11 @@ This project is **Content Top** - an SEO content generation system.
 - Frontend: `frontend/index.html`
 - App Logic: `frontend/js/app.js`
 
+## Scraper Configuration
+- **User Agent**: `"Beslist script voor SEO"` (set in `backend/scraper_service.py`)
+- **Purpose**: Custom identifier for Beslist scraping operations
+- **Location**: `USER_AGENT` constant at top of `scraper_service.py`
+
 ## What It Does
 Processes URLs from database, scrapes product information, generates AI-powered SEO content, and saves results.
 

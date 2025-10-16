@@ -118,6 +118,18 @@ docker-compose exec app python -m backend.import_content
 - **Recommended Delay**: 0.5-0.7s is the safe sweet spot that prevents triggering rate limits while maintaining reasonable speed
 - **Location**: backend/scraper_service.py (lines 70-73)
 
+### Custom User Agent for Scraper Identification
+- **Problem**: Need to identify scraper traffic in server logs for debugging and traffic analysis
+- **Solution**: Set custom user agent string that describes the scraper purpose
+- **Implementation**: Define `USER_AGENT` constant at top of scraper service with descriptive string
+- **Example**: `USER_AGENT = "Beslist script voor SEO"` instead of generic browser user agent
+- **Benefits**:
+  - Easier to filter and analyze scraper traffic in server logs
+  - Clear identification for IT/operations teams
+  - Distinguishes scraper from regular browser traffic
+  - Helps with debugging rate limiting or blocking issues
+- **Location**: backend/scraper_service.py (line 11)
+
 ## Git Commands
 ```bash
 # SSH Setup
@@ -182,6 +194,23 @@ if env_path.exists():
 # Use environment variables
 api_key = os.getenv("OPENAI_API_KEY")
 ```
+
+### Custom Slash Commands for Permission Management
+- **Pattern**: Create markdown files in .claude/commands/ for frequently used operations
+- **Use Case**: Quick toggles for Claude Code settings without manual file editing
+- **Benefit**: Simple one-command access to complex configuration changes
+- **Implementation**:
+  1. Create `.claude/commands/` directory
+  2. Add markdown files with plain text instructions (e.g., `skip-permissions.md`)
+  3. Claude Code executes the instructions when command is invoked
+- **Example Commands**:
+  - `/skip-permissions`: Set `defaultMode` to `bypassPermissions` in `.claude/settings.local.json`
+  - `/restore-permissions`: Set `defaultMode` back to `default`
+- **Benefits**:
+  - No need to remember file paths or JSON syntax
+  - Consistent execution across team members
+  - Self-documenting through command names
+- **Location**: `.claude/commands/*.md`
 
 ### Project Separation Strategy
 - **Pattern**: Separate distinct projects into independent repositories
