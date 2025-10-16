@@ -1,0 +1,484 @@
+# ARCHITECTURE.md
+
+**Project:** Content Top - SEO Content Generation System
+**Last Updated:** 2025-10-16
+
+## Table of Contents
+1. [System Overview](#system-overview)
+2. [Frontend Architecture](#frontend-architecture)
+3. [Backend Architecture](#backend-architecture)
+4. [Database Architecture](#database-architecture)
+5. [Network Architecture](#network-architecture)
+6. [Key Design Decisions](#key-design-decisions)
+7. [Technology Choices](#technology-choices)
+
+---
+
+## System Overview
+
+### High-Level Architecture
+```
+┌─────────────────┐         ┌─────────────────┐         ┌──────────────────┐
+│   Web Browser   │────────▶│  FastAPI App    │────────▶│   PostgreSQL     │
+│  (Bootstrap UI) │         │  (Port 8003)    │         │   (Port 5433)    │
+└─────────────────┘         └─────────────────┘         └──────────────────┘
+                                    │                             │
+                                    │                             │
+                                    ▼                             ▼
+                            ┌──────────────┐           ┌──────────────────┐
+                            │   OpenAI     │           │  AWS Redshift    │
+                            │     API      │           │ (Data Storage)   │
+                            └──────────────┘           └──────────────────┘
+                                    │
+                                    ▼
+                            ┌──────────────┐
+                            │  Beslist.nl  │
+                            │  (Scraping)  │
+                            └──────────────┘
+```
+
+### Core Workflow
+1. **Input**: URLs loaded from Redshift table (`pa.jvs_seo_werkvoorraad_shopping_season`)
+2. **Scraping**: Web scraper fetches product data with custom user agent
+3. **AI Generation**: OpenAI generates SEO-optimized content (100 words)
+4. **Storage**: Content saved to Redshift, tracking to local PostgreSQL
+5. **Quality Control**: Link validation checks for broken hyperlinks (301/404)
+
+### Deployment Model
+- **Everything runs in Docker containers** via `docker-compose`
+- **No build tools** - direct HTML/CSS/JS editing with auto-reload
+- **Single-machine deployment** - designed for 1-10 users
+- **Hybrid database** - local PostgreSQL for speed, Redshift for persistence
+
+---
+
+## Frontend Architecture
+
+### Technology Stack
+- **Framework**: None (Vanilla JavaScript)
+- **UI Library**: Bootstrap 5 (via CDN)
+- **Build Tools**: None
+- **File Structure**:
+  ```
+  frontend/
+  ├── index.html       # Single-page application
+  ├── css/
+  │   └── style.css    # Custom styles
+  └── js/
+      └── app.js       # Application logic
+  ```
+
+### Design Principles
+
+#### 1. No Build Tools Philosophy
+**Decision**: Use vanilla JavaScript + Bootstrap CDN instead of React/Vue/Webpack
+
+**Rationale**:
+- Instant changes: Edit → Save → Refresh (no compilation)
+- No npm install delays (no node_modules)
+- Works identically on any machine with Docker
+- Reduces complexity for small teams
+- Saves 500MB+ of disk space
+
+**Trade-offs**:
+- No JSX/component frameworks
+- Manual DOM manipulation
+- Limited code reusability
+
+#### 2. Real-Time Progress Tracking
+**Pattern**: JavaScript polling instead of WebSockets
+
+**Implementation**:
+```javascript
+pollInterval = setInterval(updateJobStatus, 2000);  // Poll every 2 seconds
+if (status === 'completed') clearInterval(pollInterval);
+```
+
+**Rationale**:
+- Simpler than WebSocket setup
+- No need for persistent connections
+- Sufficient for 2-second update intervals
+- Easier to debug
+
+#### 3. Direct DOM Manipulation
+**Pattern**: Avoid innerHTML for complex content with hyperlinks
+
+**Issue**: Browser auto-links HTML tags when using template literals
+```javascript
+// ❌ Wrong: Browser parses </div> as URL
+html += `<a href="/product">Product</a></div>`;
+
+// ✅ Correct: Create DOM elements separately
+const div = document.createElement('div');
+div.innerHTML = content;
+```
+
+---
+
+## Backend Architecture
+
+### Technology Stack
+- **Framework**: FastAPI 0.104.1
+- **Server**: Uvicorn with auto-reload
+- **Python Version**: 3.11
+- **Parallelization**: ThreadPoolExecutor (1-10 workers)
+- **Session Management**: Persistent HTTP sessions with connection pooling
+
+### Service Layer Architecture
+
+```
+main.py (API Endpoints)
+    │
+    ├──▶ scraper_service.py (Web Scraping)
+    │       └──▶ requests + BeautifulSoup (lxml parser)
+    │
+    ├──▶ gpt_service.py (AI Content Generation)
+    │       └──▶ OpenAI API (gpt-4o-mini, 300 max_tokens)
+    │
+    ├──▶ link_validator.py (Quality Control)
+    │       └──▶ HTTP status checking (301/404 detection)
+    │
+    └──▶ database.py (Data Access Layer)
+            ├──▶ PostgreSQL (local tracking)
+            └──▶ Redshift (persistent storage)
+```
+
+### Key Design Decisions
+
+#### 1. Parallel Processing with ThreadPoolExecutor
+**Decision**: Use thread-based parallelism (1-10 configurable workers)
+
+**Rationale**:
+- I/O-bound workload (scraping + API calls)
+- Threads work well for I/O (no CPU-bound bottleneck)
+- Each worker gets own database connection
+- Linear speedup up to ~7 workers
+
+**Performance**: 350-840 URLs/hour with 3 workers
+
+#### 2. Batch Database Operations
+**Decision**: Batch all Redshift operations after parallel processing
+
+**Problem**: 10 workers × 2 Redshift calls = 20 simultaneous connections
+
+**Solution**:
+```python
+# Workers collect operations instead of executing
+def process_single_url(url):
+    redshift_ops = []
+    redshift_ops.append(('insert_content', url, content))
+    return (result, redshift_ops)
+
+# Execute all operations in single transaction
+for result, ops in result_tuples:
+    all_redshift_ops.extend(ops)
+execute_batch(all_redshift_ops)  # Single connection
+```
+
+**Impact**: 15-20% throughput improvement
+
+#### 3. Scraper Configuration
+**User Agent**: `"Beslist script voor SEO"`
+
+**Rationale**:
+- Clear identification in server logs
+- Distinguishes scraper from browser traffic
+- Helps with debugging rate limiting issues
+- IT team can easily filter/analyze traffic
+
+**Rate Limiting**: 0.2-0.3s delay between requests
+- Whitelisted IP (87.212.193.148) bypasses captchas
+- Conservative delay prevents Cloudflare rate limiting
+- 15-30 minute cooldown if rate limit triggered
+
+#### 4. Performance Optimizations
+**Goal**: Process 131K URLs in 4-9 days (was 18-46 days)
+
+**Optimizations**:
+1. Reduced AI max_tokens: 500 → 300 (content is ~100 words)
+2. Scraping delay: 0.5-1s → 0.2-0.3s (whitelisted IP)
+3. BeautifulSoup parser: html.parser → lxml (2-3x faster)
+4. Batch database commits (1 commit per URL instead of 3-5)
+5. Use cursor.executemany() for batch inserts
+
+**Result**: 30-50% faster per URL (4-10s → 2.5-7s)
+
+---
+
+## Database Architecture
+
+### Hybrid Architecture: PostgreSQL + Redshift
+
+**Decision**: Split responsibilities between local and cloud databases
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Application Layer                        │
+└─────────────────────────────────────────────────────────────┘
+                │                              │
+                ▼                              ▼
+    ┌───────────────────────┐      ┌──────────────────────────┐
+    │  PostgreSQL (Local)   │      │  Redshift (Cloud)        │
+    │  - Fast tracking      │      │  - Persistent data       │
+    │  - Temporary data     │      │  - Shared across systems │
+    └───────────────────────┘      └──────────────────────────┘
+```
+
+### Table Allocation
+
+**Local PostgreSQL** (tracking & ephemeral):
+- `pa.jvs_seo_werkvoorraad_kopteksten_check` - Processing status
+- `pa.link_validation_results` - Link validation history
+- `thema_ads_jobs` / `thema_ads_job_items` - Google Ads job tracking
+
+**Redshift** (persistent & shared):
+- `pa.jvs_seo_werkvoorraad_shopping_season` - Work queue (72,992 URLs)
+- `pa.content_urls_joep` - Generated content
+
+### Database Connection Strategy
+
+```python
+# Three connection types
+def get_db_connection():          # Local PostgreSQL only
+def get_redshift_connection():    # Redshift only
+def get_output_connection():      # Smart router (uses Redshift if enabled)
+```
+
+### Rationale for Hybrid Approach
+
+**Benefits**:
+1. **Performance**: Local tracking has zero network latency
+2. **Scalability**: Redshift optimized for large datasets (166K+ URLs)
+3. **Shared Access**: Other systems can query Redshift tables
+4. **Independence**: Can scale each database separately
+
+**Trade-offs**:
+- Increased complexity (two connection types)
+- Schema differences must be handled (Redshift has no `created_at`)
+- Sync operations required (delete from both, update in both)
+
+### Schema Design Decisions
+
+#### 1. URL Deduplication
+**Pattern**: URL as primary key in work queue
+```sql
+CREATE TABLE pa.jvs_seo_werkvoorraad_shopping_season (
+    url VARCHAR(500) PRIMARY KEY,  -- Natural key
+    kopteksten INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+**Rationale**: Natural deduplication, no duplicate processing
+
+#### 2. Status Tracking with Separate Table
+**Pattern**: Separate tracking table instead of status column
+```sql
+CREATE TABLE pa.jvs_seo_werkvoorraad_kopteksten_check (
+    url VARCHAR(500) PRIMARY KEY,
+    status VARCHAR(50) DEFAULT 'pending',  -- 'success', 'skipped', 'failed'
+    skip_reason VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+**Rationale**:
+- Work queue remains clean (minimal columns)
+- Tracking can be reset without affecting work queue
+- Allows multiple processing attempts with history
+
+#### 3. Link Validation with JSONB
+**Pattern**: Store validation details as JSONB for flexibility
+```sql
+CREATE TABLE pa.link_validation_results (
+    content_url TEXT NOT NULL,
+    broken_link_details JSONB,  -- Array of {url, status_code, status_text}
+    validated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+**Rationale**:
+- Variable number of broken links per URL
+- No need for separate broken_links table
+- Easy to query and display
+
+---
+
+## Network Architecture
+
+### Port Configuration
+- **Frontend/API**: Port 8003 (external) → 8000 (container)
+- **PostgreSQL**: Port 5433 (external) → 5432 (container)
+- **Reason**: Avoid conflicts with existing services on host
+
+### VPN Bypass for Whitelisted IP
+
+**Problem**: Company VPN routes through 94.142.210.226, but scraper needs whitelisted IP (87.212.193.148)
+
+**Solution**: Windows static route with lower metric
+
+```cmd
+# Add persistent route (as Administrator)
+route add -p 65.9.0.0 mask 255.255.0.0 192.168.1.1 metric 1 if 10
+```
+
+**How It Works**:
+1. Windows routing is hierarchical (lower metric = higher priority)
+2. VPN routes have metric 25-50
+3. Our route (metric 1) takes precedence for CloudFront IPs (65.9.0.0/16)
+4. WSL2 and Docker inherit Windows routing table
+5. Route persists across reboots (`-p` flag)
+
+**Result**: VPN stays connected (for Redshift), scraper uses whitelisted IP
+
+### Failed Approaches
+- OpenVPN client-side routing (server overrides)
+- OpenVPN route-nopull (breaks internal routes)
+- Privoxy proxy (still routes through VPN)
+- Docker network_mode: host (still uses VPN)
+
+**Key Learning**: For corporate VPNs, split tunneling must be configured at OS routing level, not application level
+
+---
+
+## Key Design Decisions
+
+### 1. Single-Page Application vs Multi-Page
+**Decision**: Single-page application (SPA)
+
+**Rationale**:
+- Simple project scope (one workflow)
+- No need for routing complexity
+- Faster perceived performance (no page reloads)
+- Easier state management with JavaScript
+
+### 2. Synchronous vs Asynchronous Job Processing
+**Decision**: Synchronous processing with polling for updates
+
+**Rationale**:
+- Simpler than job queues (Celery/RQ)
+- Sufficient for single-user workflow
+- No need for distributed workers
+- Easy to pause/resume jobs
+
+### 3. Quality Control Strategy
+**Decision**: Automatic link validation with auto-reset to pending
+
+**Workflow**:
+1. Extract hyperlinks from generated content
+2. Check HTTP status (301/404 = broken)
+3. If broken links found → delete content + reset to pending
+4. Content regenerated in next batch
+
+**Rationale**:
+- Automated quality control
+- No manual intervention required
+- Historical tracking for debugging
+- Incremental validation (only unvalidated URLs)
+
+### 4. Content Generation Constraints
+**Decision**: GPT-4o-mini with 300 max_tokens
+
+**Rationale**:
+- Target: 100 words (~130 tokens)
+- 300 tokens provides buffer for variation
+- Reduced from 500 tokens (saves 10-15% processing time)
+- Still generates quality content
+
+**Prompt Engineering**:
+- Explicit constraints: "KORTE, heldere omschrijving (max 3-5 woorden)" for hyperlinks
+- Prevents long anchor text (e.g., full product names)
+- Example-driven (show desired format in prompt)
+
+---
+
+## Technology Choices
+
+### Why These Technologies?
+
+#### FastAPI
+**Chosen Over**: Flask, Django
+
+**Reasons**:
+- Automatic OpenAPI documentation
+- Built-in async support (future-ready)
+- Type hints for better IDE support
+- Fast performance (on par with Node.js)
+- Modern Python (3.11 features)
+
+#### PostgreSQL + Redshift
+**Chosen Over**: MySQL, MongoDB, Redshift-only
+
+**Reasons**:
+- PostgreSQL: Fast, reliable, excellent JSON support (JSONB)
+- Redshift: Shared data warehouse (accessible to other teams)
+- Hybrid: Best of both worlds (speed + scalability)
+
+#### ThreadPoolExecutor
+**Chosen Over**: AsyncIO, Celery, multiprocessing
+
+**Reasons**:
+- I/O-bound workload (perfect for threads)
+- Simpler than async/await for requests + BeautifulSoup
+- No need for separate worker process (Celery)
+- Linear speedup up to 7 workers
+
+#### Bootstrap
+**Chosen Over**: Tailwind, Material-UI, custom CSS
+
+**Reasons**:
+- CDN-based (no build step)
+- Familiar to most developers
+- Comprehensive component library
+- Responsive out of the box
+
+#### OpenAI API
+**Chosen Over**: Open-source LLMs (Llama, Mistral)
+
+**Reasons**:
+- Superior quality for Dutch content
+- No infrastructure for self-hosting
+- Predictable costs (per-token pricing)
+- Fast inference (no GPU required)
+
+#### Docker + Docker Compose
+**Chosen Over**: Bare metal, Kubernetes
+
+**Reasons**:
+- Consistent environment across machines
+- Simple orchestration with docker-compose
+- No need for Kubernetes complexity (small scale)
+- Easy to version control (docker-compose.yml)
+
+---
+
+## Future Architectural Considerations
+
+### If Scale Increases (100+ users, 1M+ URLs):
+
+1. **Job Queue**: Add Celery + Redis for distributed workers
+2. **Caching**: Redis for rate limiting and result caching
+3. **Load Balancing**: Multiple FastAPI instances behind nginx
+4. **Database Sharding**: Split Redshift by date/category
+5. **CDN**: Cloudflare for frontend static assets
+6. **Monitoring**: Prometheus + Grafana for metrics
+7. **Logging**: ELK stack for centralized logs
+
+### Current Scale Targets:
+- **Users**: 1-10 concurrent
+- **URLs**: 72,992 (shopping season batch)
+- **Processing Speed**: 350-840 URLs/hour (3 workers)
+- **Total Time**: 4-9 days for full dataset
+
+---
+
+## References
+
+- **CC1 Documentation**: See `cc1/` directory for detailed learnings and patterns
+- **Project Index**: See `cc1/PROJECT_INDEX.md` for file structure and endpoints
+- **Learnings**: See `cc1/LEARNINGS.md` for troubleshooting and patterns
+- **Main Instructions**: See `CLAUDE.md` for development workflow
+
+---
+
+_This architecture document is living documentation. Update when making significant architectural changes._

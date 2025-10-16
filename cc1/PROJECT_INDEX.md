@@ -48,6 +48,7 @@ content_top/
 ├── .env                # Local environment (git ignored)
 ├── .gitignore          # Version control excludes
 │                       # Ignores: .env files, Excel files (*.xlsx, *.xls), old thema_ads_project/
+├── ARCHITECTURE.md     # System architecture and design decisions
 ├── README.md           # Quick start guide
 ├── CLAUDE.md           # Claude Code instructions
 ├── THEMA_ADS_GUIDE.md  # Complete Thema Ads documentation
@@ -386,4 +387,10 @@ Frontend has two tabs:
   - Original error message for actual failures
 
 ---
-_Last updated: 2025-10-10_
+
+## Additional Documentation
+
+For detailed architectural decisions, design patterns, and technology rationales, see **ARCHITECTURE.md** in the project root.
+
+---
+_Last updated: 2025-10-16_
