@@ -6,6 +6,19 @@ const API_BASE = 'http://localhost:8003';
 window.addEventListener('DOMContentLoaded', () => {
     checkStatus();
     refreshStatus();
+
+    // Handle conservative mode checkbox
+    const conservativeCheckbox = document.getElementById('conservativeModeCheckbox');
+    const parallelWorkersInput = document.getElementById('parallelWorkersInput');
+
+    conservativeCheckbox.addEventListener('change', function() {
+        if (this.checked) {
+            parallelWorkersInput.value = 1;
+            parallelWorkersInput.disabled = true;
+        } else {
+            parallelWorkersInput.disabled = false;
+        }
+    });
 });
 
 async function checkStatus() {
@@ -59,8 +72,10 @@ async function processUrls() {
     const resultDiv = document.getElementById('processResult');
     const batchSizeInput = document.getElementById('batchSizeInput');
     const parallelWorkersInput = document.getElementById('parallelWorkersInput');
+    const conservativeModeCheckbox = document.getElementById('conservativeModeCheckbox');
     const batchSize = parseInt(batchSizeInput.value) || 10;
     const parallelWorkers = parseInt(parallelWorkersInput.value) || 1;
+    const conservativeMode = conservativeModeCheckbox.checked;
 
     if (batchSize < 1) {
         alert('Batch size must be at least 1');
@@ -74,10 +89,11 @@ async function processUrls() {
 
     btn.disabled = true;
     btn.textContent = 'Processing...';
-    resultDiv.innerHTML = `<div class="alert alert-info">Processing ${batchSize} URL(s) with ${parallelWorkers} parallel worker(s)...</div>`;
+    const modeText = conservativeMode ? ' (Conservative Mode)' : '';
+    resultDiv.innerHTML = `<div class="alert alert-info">Processing ${batchSize} URL(s) with ${parallelWorkers} parallel worker(s)${modeText}...</div>`;
 
     try {
-        const response = await fetch(`${API_BASE}/api/process-urls?batch_size=${batchSize}&parallel_workers=${parallelWorkers}`, {
+        const response = await fetch(`${API_BASE}/api/process-urls?batch_size=${batchSize}&parallel_workers=${parallelWorkers}&conservative_mode=${conservativeMode}`, {
             method: 'POST'
         });
 
@@ -137,8 +153,10 @@ async function processAllUrls() {
     const resultDiv = document.getElementById('processResult');
     const batchSizeInput = document.getElementById('batchSizeInput');
     const parallelWorkersInput = document.getElementById('parallelWorkersInput');
+    const conservativeModeCheckbox = document.getElementById('conservativeModeCheckbox');
     const batchSize = parseInt(batchSizeInput.value) || 10;
     const parallelWorkers = parseInt(parallelWorkersInput.value) || 1;
+    const conservativeMode = conservativeModeCheckbox.checked;
 
     // Disable buttons and show stop button
     processBtn.disabled = true;
@@ -171,9 +189,10 @@ async function processAllUrls() {
             batchCount++;
 
             // Update progress text
-            progressText.textContent = `Batch ${batchCount} - Processing ${batchSize} URLs with ${parallelWorkers} workers...`;
+            const modeText = conservativeMode ? ' (Conservative Mode)' : '';
+            progressText.textContent = `Batch ${batchCount} - Processing ${batchSize} URLs with ${parallelWorkers} workers${modeText}...`;
 
-            const response = await fetch(`${API_BASE}/api/process-urls?batch_size=${batchSize}&parallel_workers=${parallelWorkers}`, {
+            const response = await fetch(`${API_BASE}/api/process-urls?batch_size=${batchSize}&parallel_workers=${parallelWorkers}&conservative_mode=${conservativeMode}`, {
                 method: 'POST'
             });
 
@@ -275,13 +294,16 @@ async function refreshStatus() {
                 itemDiv.className = 'list-group-item';
                 itemDiv.id = `result-item-${index}`;
 
+                // Format date or show N/A if not available
+                const dateText = item.created_at ? new Date(item.created_at).toLocaleString() : 'N/A';
+
                 // Build the structure
                 itemDiv.innerHTML = `
                     <div class="d-flex w-100 justify-content-between align-items-start">
                         <div style="flex: 1;">
                             <div class="d-flex justify-content-between align-items-start">
                                 <h6 class="mb-1" style="word-break: break-all; max-width: 85%;">${item.url}</h6>
-                                <small class="text-muted text-nowrap ms-2">${new Date(item.created_at).toLocaleString()}</small>
+                                <small class="text-muted text-nowrap ms-2">${dateText}</small>
                             </div>
                             <div class="content-preview">
                                 <div class="mb-1" style="font-size: 0.875rem;" id="preview-${index}"></div>

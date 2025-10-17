@@ -10,6 +10,11 @@ _Tasks currently being worked on_
 ## Completed
 _Finished tasks (move here when done)_
 
+- [x] Update ARCHITECTURE.md with UI theme documentation (color codes, usage map, conservative mode) #claude-session:2025-10-17
+- [x] Customize UI theme with brand colors (#059CDF blue, #9C3095 purple, #A0D168 green) using CSS custom properties #claude-session:2025-10-17
+- [x] Add conservative mode option for cautious scraping (0.5-0.7s delay, forced 1 worker, checkbox UI) #claude-session:2025-10-17
+- [x] Optimize scraper delay from 0.5-0.7s to 0.2-0.3s based on rate limit testing (2-3x speed improvement) #claude-session:2025-10-17
+- [x] Conduct comprehensive rate limit testing showing NO rate limiting even at 0s delay with whitelisted IP (87.212.193.148) #claude-session:2025-10-17
 - [x] Create comprehensive ARCHITECTURE.md documenting system design, technology choices, and architectural decisions for future reference #claude-session:2025-10-16
 - [x] Update scraper user agent from generic Chrome UA to 'Beslist script voor SEO' for better traffic identification in server logs #claude-session:2025-10-16
 - [x] Create /skip-permissions and /restore-permissions slash commands for quick permission mode toggling #claude-session:2025-10-16

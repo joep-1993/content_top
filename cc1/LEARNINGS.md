@@ -106,17 +106,24 @@ docker-compose exec app python -m backend.import_content
 ```
 - **Location**: CSV import workflow for bulk content upload
 
-### Cloudflare Rate Limit Persistence After Aggressive Scraping
-- **Problem**: Even after reducing scraping delay from 0.05-0.1s to 0.5-0.7s, all URLs still fail with HTTP 202 responses
-- **Cause**: Cloudflare's rate limit window is cumulative - once triggered by aggressive scraping, the IP remains "on probation" for 15-30 minutes regardless of subsequent request rate
-- **Symptoms**:
-  - Initial aggressive scraping (0.05-0.1s delay) triggers rate limiting
-  - All subsequent requests get HTTP 202 (queuing) even with conservative delay (0.5-0.7s)
-  - Persists for 15-30 minutes after last aggressive request
-- **Solution**: Wait 15-30 minutes after rate limit trigger before resuming scraping. The conservative delay will work properly once the rate limit window fully resets.
-- **Key Learning**: With whitelisted IPs, Cloudflare doesn't remove rate limits - only captchas. Rate limiting still applies and has a longer cooldown period than expected.
-- **Recommended Delay**: 0.5-0.7s is the safe sweet spot that prevents triggering rate limits while maintaining reasonable speed
-- **Location**: backend/scraper_service.py (lines 70-73)
+### Cloudflare Rate Limit Testing with Whitelisted IP
+- **Problem**: Need to determine optimal scraping rate for whitelisted IP (87.212.193.148)
+- **Testing Methodology**: Progressive speed testing from conservative (1.0-1.3s) to aggressive (0s burst mode)
+- **Test Results**:
+  - 1.0-1.3s delay: 100% success (10 URLs)
+  - 0.5-0.7s delay: 100% success (10 URLs)
+  - 0.3-0.5s delay: 100% success (10 URLs)
+  - 0.1-0.3s delay: 100% success (10 URLs)
+  - 0.05s delay: 100% success (15 URLs)
+  - 0.02s delay: 100% success (15 URLs)
+  - 0.01s delay: 100% success (15 URLs)
+  - 0s delay (burst mode): 100% success (15 URLs)
+- **Key Finding**: Whitelisted IP has NO rate limiting from Cloudflare, even at burst mode
+- **Recommended Delays**:
+  - **Optimized Mode** (default): 0.2-0.3s delay (~3-5 URLs/sec) - balanced speed with minimal risk
+  - **Conservative Mode**: 0.5-0.7s delay (~2 URLs/sec) with 1 worker only - maximum safety for cautious operation
+- **Implementation**: Two modes available via `conservative_mode` parameter and frontend checkbox
+- **Location**: backend/scraper_service.py (lines 70-82), backend/main.py (conservative_mode enforcement)
 
 ### Custom User Agent for Scraper Identification
 - **Problem**: Need to identify scraper traffic in server logs for debugging and traffic analysis
@@ -561,6 +568,63 @@ output_conn.commit()
 ```
 - **Location**: backend/main.py - `process_single_url()`, `process_urls()` endpoint
 - **Additional Optimization**: Use executemany() for batch INSERTs (implemented - see next pattern)
+
+### Conservative Mode Pattern with ThreadPoolExecutor
+- **Problem**: Need to pass additional parameters to worker functions when using ThreadPoolExecutor.map()
+- **Use Case**: Conservative mode flag needs to be passed to each worker alongside the URL
+- **Solution**: Use `functools.partial` to bind parameters before passing to executor
+- **Implementation**:
+```python
+from functools import partial
+from concurrent.futures import ThreadPoolExecutor
+
+# Bind conservative_mode parameter to function
+process_func = partial(process_single_url, conservative_mode=True)
+
+# Pass partially-applied function to executor
+with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
+    results = list(executor.map(process_func, urls))
+```
+- **Benefits**:
+  - Clean parameter passing without changing function signature
+  - Worker function receives both url (from map) and conservative_mode (from partial)
+  - No need for lambda or wrapper functions
+- **Alternative Approaches Rejected**:
+  - Lambda functions: More verbose and harder to read
+  - Wrapper functions: Unnecessary code duplication
+  - Tuple unpacking: Requires restructuring URL list
+- **Location**: backend/main.py - `process_urls()` endpoint (lines 216-218)
+
+### CSS Theme Override Pattern with Custom Properties
+- **Problem**: Need to override Bootstrap default colors consistently across entire UI
+- **Use Case**: Apply custom brand colors (#059CDF blue, #9C3095 purple, #A0D168 green) to match company branding
+- **Solution**: CSS custom properties (CSS variables) with !important overrides
+- **Implementation**:
+```css
+/* Define custom color palette */
+:root {
+    --color-primary: #059CDF;   /* Blue */
+    --color-info: #9C3095;      /* Purple/Magenta */
+    --color-success: #A0D168;   /* Green */
+}
+
+/* Override Bootstrap classes */
+.bg-primary { background-color: var(--color-primary) !important; }
+.btn-primary { background-color: var(--color-primary); border-color: var(--color-primary); }
+.text-primary { color: var(--color-primary) !important; }
+
+/* Include hover states (20% darker) */
+.btn-primary:hover { background-color: #0480b3; border-color: #0480b3; }
+```
+- **Benefits**:
+  - Single source of truth for color values (CSS variables)
+  - No need to modify Bootstrap source files
+  - Easy to maintain and update colors
+  - Supports hover states and all Bootstrap color classes
+  - !important ensures overrides work everywhere
+- **Coverage**: Primary, Info, Success colors for buttons, badges, alerts, backgrounds, text, progress bars
+- **Location**: frontend/css/style.css (lines 4-148)
+- **Documentation**: ARCHITECTURE.md includes full color codes, usage map, and rationale
 
 ### Content Generation Performance Optimizations
 - **Problem**: Processing 131K URLs at ~4-10 seconds per URL would take 18-46 days
