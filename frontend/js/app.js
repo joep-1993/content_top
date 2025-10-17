@@ -7,7 +7,7 @@ window.addEventListener('DOMContentLoaded', () => {
     checkStatus();
     refreshStatus();
 
-    // Handle conservative mode checkbox
+    // Handle conservative mode checkbox for SEO content generation
     const conservativeCheckbox = document.getElementById('conservativeModeCheckbox');
     const parallelWorkersInput = document.getElementById('parallelWorkersInput');
 
@@ -17,6 +17,19 @@ window.addEventListener('DOMContentLoaded', () => {
             parallelWorkersInput.disabled = true;
         } else {
             parallelWorkersInput.disabled = false;
+        }
+    });
+
+    // Handle conservative mode checkbox for link validation
+    const validationConservativeCheckbox = document.getElementById('validationConservativeModeCheckbox');
+    const validationParallelWorkersInput = document.getElementById('validationParallelWorkers');
+
+    validationConservativeCheckbox.addEventListener('change', function() {
+        if (this.checked) {
+            validationParallelWorkersInput.value = 1;
+            validationParallelWorkersInput.disabled = true;
+        } else {
+            validationParallelWorkersInput.disabled = false;
         }
     });
 });
@@ -529,8 +542,10 @@ async function validateLinks() {
     const resultDiv = document.getElementById('validationResult');
     const batchSizeInput = document.getElementById('validationBatchSize');
     const parallelWorkersInput = document.getElementById('validationParallelWorkers');
+    const conservativeModeCheckbox = document.getElementById('validationConservativeModeCheckbox');
     const batchSize = parseInt(batchSizeInput.value) || 10;
     const parallelWorkers = parseInt(parallelWorkersInput.value) || 3;
+    const conservativeMode = conservativeModeCheckbox.checked;
 
     if (batchSize < 1) {
         alert('Batch size must be at least 1');
@@ -544,10 +559,11 @@ async function validateLinks() {
 
     validateBtn.disabled = true;
     validateBtn.textContent = 'Validating...';
-    resultDiv.innerHTML = `<div class="alert alert-info">Validating links in ${batchSize} content items with ${parallelWorkers} parallel workers...</div>`;
+    const modeText = conservativeMode ? ' (Conservative Mode)' : '';
+    resultDiv.innerHTML = `<div class="alert alert-info">Validating links in ${batchSize} content items with ${parallelWorkers} parallel workers${modeText}...</div>`;
 
     try {
-        const response = await fetch(`${API_BASE}/api/validate-links?batch_size=${batchSize}&parallel_workers=${parallelWorkers}`, {
+        const response = await fetch(`${API_BASE}/api/validate-links?batch_size=${batchSize}&parallel_workers=${parallelWorkers}&conservative_mode=${conservativeMode}`, {
             method: 'POST'
         });
 

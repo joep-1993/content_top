@@ -1,5 +1,7 @@
 import re
 import requests
+import time
+import random
 from typing import List, Dict, Tuple
 from bs4 import BeautifulSoup
 
@@ -25,12 +27,22 @@ def extract_hyperlinks_from_content(content: str) -> List[str]:
 
     return links
 
-def check_url_status(url: str) -> Tuple[int, str]:
+def check_url_status(url: str, conservative_mode: bool = False) -> Tuple[int, str]:
     """
     Check the HTTP status code of a URL.
     Returns tuple of (status_code, status_text).
+
+    Args:
+        url: URL to check
+        conservative_mode: If True, use conservative rate (max 2 URLs/sec with delay)
     """
     try:
+        # Add delay if conservative mode enabled
+        if conservative_mode:
+            # Conservative mode: 0.5-0.7 second delay (max 2 URLs/sec)
+            delay = 0.5 + random.uniform(0, 0.2)
+            time.sleep(delay)
+
         full_url = BASE_DOMAIN + url if url.startswith('/') else url
         response = requests.head(full_url, allow_redirects=False, timeout=10)
         return (response.status_code, response.reason)
@@ -38,7 +50,7 @@ def check_url_status(url: str) -> Tuple[int, str]:
         # Return 0 for network errors
         return (0, str(e))
 
-def validate_content_links(content: str) -> Dict:
+def validate_content_links(content: str, conservative_mode: bool = False) -> Dict:
     """
     Validate all hyperlinks in content.
     Returns dict with validation results:
@@ -48,6 +60,10 @@ def validate_content_links(content: str) -> Dict:
         'valid_links': int,
         'has_broken_links': bool
     }
+
+    Args:
+        content: HTML content to validate
+        conservative_mode: If True, use conservative rate (max 2 URLs/sec with delay)
     """
     if not content:
         return {
@@ -75,7 +91,7 @@ def validate_content_links(content: str) -> Dict:
     unique_links = list(set(links))
 
     for link in unique_links:
-        status_code, status_text = check_url_status(link)
+        status_code, status_text = check_url_status(link, conservative_mode=conservative_mode)
 
         if status_code in BROKEN_STATUS_CODES:
             broken_links.append({

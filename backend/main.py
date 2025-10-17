@@ -523,12 +523,17 @@ async def delete_result(url: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-def validate_single_content(content_data: tuple) -> dict:
-    """Validate links in a single content item - runs in thread pool"""
+def validate_single_content(content_data: tuple, conservative_mode: bool = False) -> dict:
+    """Validate links in a single content item - runs in thread pool
+
+    Args:
+        content_data: Tuple of (content_url, content)
+        conservative_mode: If True, use conservative rate (max 2 URLs/sec)
+    """
     content_url, content = content_data
 
     # Validate links in content
-    validation_result = validate_content_links(content)
+    validation_result = validate_content_links(content, conservative_mode=conservative_mode)
 
     # Add the content URL to the result
     validation_result['content_url'] = content_url
@@ -536,11 +541,16 @@ def validate_single_content(content_data: tuple) -> dict:
     return validation_result
 
 @app.post("/api/validate-links")
-async def validate_links(batch_size: int = 10, parallel_workers: int = 3):
+async def validate_links(batch_size: int = 10, parallel_workers: int = 3, conservative_mode: bool = False):
     """
     Validate hyperlinks in generated content.
     Checks if links return 301 or 404, and moves content back to pending if broken links found.
     Supports parallel processing with configurable workers.
+
+    Args:
+        batch_size: Number of content items to validate
+        parallel_workers: Number of parallel workers (1-10), ignored if conservative_mode is True
+        conservative_mode: If True, use conservative rate (max 2 URLs/sec) with 1 worker. Default: False
     """
     try:
         # Validate parameters
@@ -549,6 +559,10 @@ async def validate_links(batch_size: int = 10, parallel_workers: int = 3):
 
         if parallel_workers < 1 or parallel_workers > 10:
             raise HTTPException(status_code=400, detail="Parallel workers must be between 1 and 10")
+
+        # Conservative mode always uses 1 worker for maximum safety
+        if conservative_mode:
+            parallel_workers = 1
 
         # Get content from Redshift
         output_conn = get_output_connection()
@@ -589,8 +603,10 @@ async def validate_links(batch_size: int = 10, parallel_workers: int = 3):
         content_items = [(row['url'], row['content']) for row in rows]
 
         # Process validations in parallel using ThreadPoolExecutor
+        # Use partial to bind conservative_mode parameter
+        validate_func = partial(validate_single_content, conservative_mode=conservative_mode)
         with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
-            validation_results = list(executor.map(validate_single_content, content_items))
+            validation_results = list(executor.map(validate_func, content_items))
 
         results = []
         moved_to_pending = 0
