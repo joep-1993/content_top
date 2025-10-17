@@ -1,4 +1,12 @@
 /* Simple custom styles - no preprocessing needed! */
+
+/* Custom Color Scheme */
+:root {
+    --color-primary: #059CDF;   /* Blue */
+    --color-info: #9C3095;      /* Purple/Magenta */
+    --color-success: #A0D168;   /* Green */
+}
+
 body {
     background-color: #f8f9fa;
 }
@@ -20,9 +28,121 @@ body {
 }
 
 .status-ok {
-    color: green;
+    color: var(--color-success);
 }
 
 .status-error {
     color: red;
+}
+
+/* Override Bootstrap Colors */
+
+/* Primary Color - Blue #059CDF */
+.bg-primary,
+.navbar.bg-primary {
+    background-color: var(--color-primary) !important;
+}
+
+.btn-primary {
+    background-color: var(--color-primary);
+    border-color: var(--color-primary);
+}
+
+.btn-primary:hover {
+    background-color: #0480b3;
+    border-color: #0480b3;
+}
+
+.btn-outline-primary {
+    color: var(--color-primary);
+    border-color: var(--color-primary);
+}
+
+.btn-outline-primary:hover {
+    background-color: var(--color-primary);
+    border-color: var(--color-primary);
+    color: white;
+}
+
+.text-primary {
+    color: var(--color-primary) !important;
+}
+
+.badge.bg-primary {
+    background-color: var(--color-primary) !important;
+}
+
+/* Info Color - Purple/Magenta #9C3095 */
+.bg-info,
+.card-header.bg-info {
+    background-color: var(--color-info) !important;
+}
+
+.btn-info {
+    background-color: var(--color-info);
+    border-color: var(--color-info);
+}
+
+.btn-info:hover {
+    background-color: #7d2678;
+    border-color: #7d2678;
+}
+
+.text-info {
+    color: var(--color-info) !important;
+}
+
+.badge.bg-info {
+    background-color: var(--color-info) !important;
+}
+
+.alert-info {
+    background-color: rgba(156, 48, 149, 0.15);
+    border-color: var(--color-info);
+    color: #4d1847;
+}
+
+/* Success Color - Green #A0D168 */
+.bg-success,
+.card-header.bg-success {
+    background-color: var(--color-success) !important;
+}
+
+.btn-success {
+    background-color: var(--color-success);
+    border-color: var(--color-success);
+}
+
+.btn-success:hover {
+    background-color: #8ac153;
+    border-color: #8ac153;
+}
+
+.btn-outline-success {
+    color: var(--color-success);
+    border-color: var(--color-success);
+}
+
+.btn-outline-success:hover {
+    background-color: var(--color-success);
+    border-color: var(--color-success);
+    color: white;
+}
+
+.text-success {
+    color: var(--color-success) !important;
+}
+
+.badge.bg-success {
+    background-color: var(--color-success) !important;
+}
+
+.alert-success {
+    background-color: rgba(160, 209, 104, 0.15);
+    border-color: var(--color-success);
+    color: #4d6632;
+}
+
+.progress-bar {
+    background-color: var(--color-success);
 }

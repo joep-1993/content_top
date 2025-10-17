@@ -1,7 +1,7 @@
 # ARCHITECTURE.md
 
 **Project:** Content Top - SEO Content Generation System
-**Last Updated:** 2025-10-16
+**Last Updated:** 2025-10-17
 
 ## Table of Contents
 1. [System Overview](#system-overview)
@@ -113,6 +113,44 @@ const div = document.createElement('div');
 div.innerHTML = content;
 ```
 
+### UI Theme & Color Scheme
+
+**Design Philosophy**: Custom color palette overriding Bootstrap defaults
+
+#### Color Codes
+```css
+:root {
+    --color-primary: #059CDF;   /* Blue */
+    --color-info: #9C3095;      /* Purple/Magenta */
+    --color-success: #A0D168;   /* Green */
+}
+```
+
+#### Color Usage Map
+
+| UI Element | Color | Hex Code | Bootstrap Class |
+|------------|-------|----------|-----------------|
+| **Navbar** | Blue | #059CDF | `.bg-primary` |
+| **Upload URLs Section** | Purple | #9C3095 | `.bg-info` |
+| **SEO Content Generation Section** | Green | #A0D168 | `.bg-success` |
+| **Link Validation Section** | Grey | Bootstrap default | `.bg-secondary` |
+| **Processing Status Numbers** | Blue | #059CDF | `.text-primary` |
+| **Primary Buttons** | Blue | #059CDF | `.btn-primary` |
+| **Success Buttons** | Green | #A0D168 | `.btn-success` |
+| **Progress Bars** | Green | #A0D168 | `.progress-bar` |
+
+#### Implementation Details
+- **Location**: `frontend/css/style.css`
+- **Method**: CSS custom properties (CSS variables) with `!important` overrides
+- **Hover States**: 20% darker shade for better UX
+- **Consistency**: All Bootstrap color classes overridden for uniform theme
+
+#### Design Rationale
+- Blue (primary): Professional, trustworthy, action-oriented
+- Purple (info): Distinctive, creative, stands out from standard Bootstrap
+- Green (success): Positive feedback, completion, growth
+- Grey (secondary): Neutral, non-critical actions
+
 ---
 
 ## Backend Architecture
@@ -186,10 +224,12 @@ execute_batch(all_redshift_ops)  # Single connection
 - Helps with debugging rate limiting issues
 - IT team can easily filter/analyze traffic
 
-**Rate Limiting**: 0.2-0.3s delay between requests
+**Rate Limiting**: Two modes available
+- **Optimized Mode** (default): 0.2-0.3s delay (~3-5 URLs/sec)
+- **Conservative Mode**: 0.5-0.7s delay (~2 URLs/sec) with 1 worker only
 - Whitelisted IP (87.212.193.148) bypasses captchas
-- Conservative delay prevents Cloudflare rate limiting
-- 15-30 minute cooldown if rate limit triggered
+- Rate limit testing showed no throttling even at 0s delay
+- Conservative mode available as safety option for cautious operation
 
 #### 4. Performance Optimizations
 **Goal**: Process 131K URLs in 4-9 days (was 18-46 days)

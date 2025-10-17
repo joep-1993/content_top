@@ -13,8 +13,7 @@
         <div class="container">
             <span class="navbar-brand mb-0 h1">SEO Content Generator</span>
             <div>
-                <a href="/static/thema-ads.html" class="btn btn-light btn-sm me-2">Thema Ads</a>
-                <span class="badge bg-light text-dark" id="modelBadge">AI Ready</span>
+                <a href="/static/thema-ads.html" class="btn btn-light btn-sm">Thema Ads</a>
             </div>
         </div>
     </nav>
@@ -28,13 +27,29 @@
                         <h5 class="mb-0">Upload URLs</h5>
                     </div>
                     <div class="card-body">
-                        <p class="text-muted">Upload a text file with URLs (one per line). Duplicates will be automatically skipped.</p>
+                        <p class="text-muted">Upload a text file or manually enter URLs (one per line). Duplicates will be automatically skipped.</p>
+
+                        <!-- File Upload -->
                         <div class="mb-3">
+                            <label for="urlFileInput" class="form-label">Upload File</label>
                             <input type="file" class="form-control" id="urlFileInput" accept=".txt">
                         </div>
-                        <button class="btn btn-info" onclick="uploadUrls()" id="uploadBtn">
-                            Upload URLs
+                        <button class="btn btn-info mb-3" onclick="uploadUrls()" id="uploadBtn">
+                            Upload File
                         </button>
+
+                        <hr>
+
+                        <!-- Manual URL Entry -->
+                        <div class="mb-3">
+                            <label for="manualUrlInput" class="form-label">Or Enter URLs Manually</label>
+                            <textarea class="form-control" id="manualUrlInput" rows="5" placeholder="https://example.com/page1&#10;https://example.com/page2&#10;https://example.com/page3"></textarea>
+                            <small class="text-muted">Enter one URL per line</small>
+                        </div>
+                        <button class="btn btn-info" onclick="uploadManualUrls()" id="uploadManualBtn">
+                            Add URLs
+                        </button>
+
                         <div id="uploadResult" class="mt-3"></div>
                     </div>
                 </div>
@@ -54,6 +69,14 @@
                             <div class="col-auto">
                                 <label for="parallelWorkersInput" class="form-label small mb-1">Parallel Workers</label>
                                 <input type="number" class="form-control" id="parallelWorkersInput" value="3" min="1" max="10" style="width: 100px;">
+                            </div>
+                            <div class="col-auto d-flex align-items-end">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="conservativeModeCheckbox">
+                                    <label class="form-check-label small" for="conservativeModeCheckbox" title="Max 2 URLs per second (0.5-0.7s delay)">
+                                        Conservative Mode
+                                    </label>
+                                </div>
                             </div>
                             <div class="col-auto d-flex align-items-end">
                                 <button class="btn btn-success" onclick="processUrls()" id="processBtn">
@@ -93,7 +116,7 @@
 
                 <!-- Link Validation -->
                 <div class="card mb-4">
-                    <div class="card-header bg-warning">
+                    <div class="card-header bg-secondary text-white">
                         <h5 class="mb-0">Link Validation</h5>
                     </div>
                     <div class="card-body">
@@ -108,7 +131,7 @@
                                 <input type="number" class="form-control" id="validationParallelWorkers" value="3" min="1" max="10" style="width: 100px;">
                             </div>
                             <div class="col-auto d-flex align-items-end">
-                                <button class="btn btn-warning" onclick="validateLinks()" id="validateBtn">
+                                <button class="btn btn-secondary" onclick="validateLinks()" id="validateBtn">
                                     Validate Links
                                 </button>
                             </div>
@@ -134,19 +157,19 @@
                                 <p class="text-muted mb-0">Total URLs</p>
                             </div>
                             <div class="col-md-3 col-6 mb-3">
-                                <h3 id="processedUrls" class="text-success">-</h3>
+                                <h3 id="processedUrls" class="text-primary">-</h3>
                                 <p class="text-muted mb-0">Processed</p>
                             </div>
                             <div class="col-md-2 col-4 mb-3">
-                                <h3 id="skippedUrls" class="text-info">-</h3>
+                                <h3 id="skippedUrls" class="text-primary">-</h3>
                                 <p class="text-muted mb-0">Skipped</p>
                             </div>
                             <div class="col-md-2 col-4 mb-3">
-                                <h3 id="failedUrls" class="text-danger">-</h3>
+                                <h3 id="failedUrls" class="text-primary">-</h3>
                                 <p class="text-muted mb-0">Failed</p>
                             </div>
                             <div class="col-md-2 col-4 mb-3">
-                                <h3 id="pendingUrls" class="text-warning">-</h3>
+                                <h3 id="pendingUrls" class="text-primary">-</h3>
                                 <p class="text-muted mb-0">Pending</p>
                             </div>
                         </div>

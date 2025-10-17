@@ -55,11 +55,15 @@ def is_valid_url(url: str) -> bool:
         return False
     return True
 
-def scrape_product_page(url: str) -> Optional[Dict]:
+def scrape_product_page(url: str, conservative_mode: bool = False) -> Optional[Dict]:
     """
     Scrape a product listing page and extract:
     - h1 title
     - list of products (title, url, description)
+
+    Args:
+        url: URL to scrape
+        conservative_mode: If True, use conservative rate (max 2 URLs/sec). Default: False (optimized rate)
 
     Returns None if request fails or statuscode != 200
     """
@@ -67,9 +71,15 @@ def scrape_product_page(url: str) -> Optional[Dict]:
         # Clean URL first
         clean = clean_url(url)
 
-        # Conservative delay to prevent Cloudflare 202 queuing (0.5-0.7 second)
-        # Even with whitelisted IP, Cloudflare throttles very fast requests
-        delay = 0.5 + random.uniform(0, 0.2)
+        # Select delay based on mode
+        if conservative_mode:
+            # Conservative mode: max 2 URLs per second (0.5-0.7 second delay)
+            delay = 0.5 + random.uniform(0, 0.2)
+        else:
+            # Optimized delay based on rate limit testing (0.2-0.3 second)
+            # Testing showed no rate limiting even at faster rates - user-agent appears whitelisted
+            delay = 0.2 + random.uniform(0, 0.1)
+
         time.sleep(delay)
 
         # Make HTTP request with browser-like headers using persistent session

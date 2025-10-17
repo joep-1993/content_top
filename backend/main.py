@@ -7,6 +7,7 @@ from io import StringIO, BytesIO
 import csv
 import json
 import asyncio
+from functools import partial
 from concurrent.futures import ThreadPoolExecutor
 from backend.database import get_db_connection, get_output_connection
 from backend.scraper_service import scrape_product_page, sanitize_content
@@ -49,9 +50,13 @@ async def generate_text(prompt: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-def process_single_url(url: str):
+def process_single_url(url: str, conservative_mode: bool = False):
     """Process a single URL - runs in thread pool
     Returns tuple: (result_dict, redshift_operations)
+
+    Args:
+        url: URL to process
+        conservative_mode: If True, use conservative scraping rate (max 2 URLs/sec)
     """
     result = {"url": url, "status": "pending"}
     redshift_ops = []  # Store Redshift operations to batch later
@@ -61,7 +66,7 @@ def process_single_url(url: str):
 
     try:
         # Scrape the URL first (no DB operations yet)
-        scraped_data = scrape_product_page(url)
+        scraped_data = scrape_product_page(url, conservative_mode=conservative_mode)
 
         if not scraped_data:
             final_status = 'failed'
@@ -148,11 +153,16 @@ def process_single_url(url: str):
             conn.close()
 
 @app.post("/api/process-urls")
-async def process_urls(batch_size: int = 2, parallel_workers: int = 1):
+async def process_urls(batch_size: int = 2, parallel_workers: int = 1, conservative_mode: bool = False):
     """
     Process batch of URLs for SEO content generation.
     Fetches specified number of URLs, scrapes content, generates AI text, and saves to database.
     Supports parallel processing with configurable workers.
+
+    Args:
+        batch_size: Number of URLs to process
+        parallel_workers: Number of parallel workers (1-10), ignored if conservative_mode is True
+        conservative_mode: If True, use conservative scraping rate (max 2 URLs/sec) with 1 worker. Default: False
     """
     try:
         # Validate parameters
@@ -161,6 +171,10 @@ async def process_urls(batch_size: int = 2, parallel_workers: int = 1):
 
         if parallel_workers < 1 or parallel_workers > 10:
             raise HTTPException(status_code=400, detail="Parallel workers must be between 1 and 10")
+
+        # Conservative mode always uses 1 worker for maximum safety
+        if conservative_mode:
+            parallel_workers = 1
 
         # Get unprocessed URLs from Redshift
         output_conn = get_output_connection()
@@ -202,8 +216,10 @@ async def process_urls(batch_size: int = 2, parallel_workers: int = 1):
         urls = [row['url'] for row in rows]
 
         # Process URLs in parallel using ThreadPoolExecutor
+        # Use partial to bind conservative_mode parameter
+        process_func = partial(process_single_url, conservative_mode=conservative_mode)
         with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
-            result_tuples = list(executor.map(process_single_url, urls))
+            result_tuples = list(executor.map(process_func, urls))
 
         # Separate results and Redshift operations
         results = []
