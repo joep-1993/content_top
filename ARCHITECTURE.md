@@ -113,6 +113,21 @@ const div = document.createElement('div');
 div.innerHTML = content;
 ```
 
+#### 4. Handling Null Timestamps
+**Pattern**: Gracefully handle missing created_at from Redshift
+
+**Issue**: Redshift table lacks created_at column, causing "1-1-1970" display
+
+**Solution**:
+```javascript
+const dateText = item.created_at ? new Date(item.created_at).toLocaleString() : 'N/A';
+```
+
+**Rationale**:
+- Redshift table schema differences require null handling
+- "N/A" is clearer than epoch date (1970-01-01)
+- Prevents confusion about when content was created
+
 ### UI Theme & Color Scheme
 
 **Design Philosophy**: Custom color palette overriding Bootstrap defaults
@@ -342,6 +357,48 @@ CREATE TABLE pa.link_validation_results (
 - No need for separate broken_links table
 - Easy to query and display
 
+### Database Maintenance Utilities
+
+#### Deduplication Strategy
+**Problem**: Bulk imports or interrupted processing can create duplicate content records
+
+**Solution**: `backend/deduplicate_content.py`
+```sql
+CREATE TEMP TABLE content_deduped AS
+SELECT url, content
+FROM (
+    SELECT url, content,
+           ROW_NUMBER() OVER (PARTITION BY url ORDER BY content) as rn
+    FROM pa.content_urls_joep
+)
+WHERE rn = 1;
+
+DELETE FROM pa.content_urls_joep;
+INSERT INTO pa.content_urls_joep (url, content)
+SELECT url, content FROM content_deduped;
+```
+
+**Results**: Removed 48,846 duplicates (108,722 → 59,876 unique URLs)
+
+#### Werkvoorraad Synchronization
+**Problem**: Content exists but werkvoorraad table not updated (URLs marked pending but have content)
+
+**Solution**: `backend/sync_werkvoorraad.py`
+```sql
+UPDATE pa.jvs_seo_werkvoorraad_shopping_season w
+SET kopteksten = 1
+FROM pa.content_urls_joep c
+WHERE w.url = c.url AND w.kopteksten = 0;
+```
+
+**Results**: Synchronized 17,672 URLs, 0 overlaps remaining
+
+**Use Cases**:
+- After bulk CSV imports
+- After manual content additions
+- After interrupted processing sessions
+- When content exists outside the work queue
+
 ---
 
 ## Network Architecture
@@ -410,11 +467,20 @@ route add -p 65.9.0.0 mask 255.255.0.0 192.168.1.1 metric 1 if 10
 3. If broken links found → delete content + reset to pending
 4. Content regenerated in next batch
 
+**Link Validation Modes**:
+- **Optimized Mode** (default): No delay between checks
+  - ~60,000 items/hour with 5 workers
+  - Recommended for link validation (lightweight HEAD requests)
+- **Conservative Mode**: 0.5-0.7s delay per link check
+  - ~1,552 items/hour with 1 worker
+  - Available for maximum caution
+
 **Rationale**:
 - Automated quality control
 - No manual intervention required
 - Historical tracking for debugging
 - Incremental validation (only unvalidated URLs)
+- Conservative mode matches scraper safety settings
 
 ### 4. Content Generation Constraints
 **Decision**: GPT-4o-mini with 300 max_tokens
