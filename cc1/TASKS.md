@@ -10,6 +10,10 @@ _Tasks currently being worked on_
 ## Completed
 _Finished tasks (move here when done)_
 
+- [x] Add conservative mode to link validator (0.5-0.7s delay per link check, forced 1 worker, checkbox UI) #claude-session:2025-10-17
+- [x] Create deduplication utility script removing 48,846 duplicate records (108,722→59,876 unique URLs) #claude-session:2025-10-17
+- [x] Create werkvoorraad synchronization utility script updating 17,672 URLs from pending to processed #claude-session:2025-10-17
+- [x] Fix date display showing "1-1-1970, 01:00:00" to show "N/A" when created_at is null #claude-session:2025-10-17
 - [x] Update ARCHITECTURE.md with UI theme documentation (color codes, usage map, conservative mode) #claude-session:2025-10-17
 - [x] Customize UI theme with brand colors (#059CDF blue, #9C3095 purple, #A0D168 green) using CSS custom properties #claude-session:2025-10-17
 - [x] Add conservative mode option for cautious scraping (0.5-0.7s delay, forced 1 worker, checkbox UI) #claude-session:2025-10-17

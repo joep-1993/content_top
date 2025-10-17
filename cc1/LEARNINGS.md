@@ -626,6 +626,77 @@ with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
 - **Location**: frontend/css/style.css (lines 4-148)
 - **Documentation**: ARCHITECTURE.md includes full color codes, usage map, and rationale
 
+### Database Deduplication Strategy
+- **Problem**: Content table had 48,846 duplicate records (108,722 total → 59,876 unique URLs)
+- **Use Case**: After bulk imports or if multiple generation runs created duplicate content
+- **Solution**: Use temporary table with ROW_NUMBER() window function to deduplicate
+- **Implementation**:
+```sql
+-- Create temp table with deduplicated data
+CREATE TEMP TABLE content_deduped AS
+SELECT url, content
+FROM (
+    SELECT url, content,
+           ROW_NUMBER() OVER (PARTITION BY url ORDER BY content) as rn
+    FROM pa.content_urls_joep
+)
+WHERE rn = 1;
+
+-- Replace original table
+DELETE FROM pa.content_urls_joep;
+INSERT INTO pa.content_urls_joep (url, content)
+SELECT url, content FROM content_deduped;
+```
+- **Benefits**:
+  - Handles large datasets efficiently (100K+ records)
+  - Single transaction ensures data integrity
+  - Window function picks one record per URL (randomly if no timestamp)
+  - Works on Redshift without created_at column
+- **Script**: `backend/deduplicate_content.py`
+- **Result**: Removed 48,846 duplicates, 100% clean (0 duplicates remaining)
+
+### Werkvoorraad Synchronization Pattern
+- **Problem**: Content exists but werkvoorraad table not updated (URLs marked pending but have content)
+- **Use Case**: After bulk imports, manual content additions, or interrupted processing
+- **Solution**: Use SQL JOIN to update werkvoorraad table based on content table
+- **Implementation**:
+```sql
+-- Update werkvoorraad table
+UPDATE pa.jvs_seo_werkvoorraad_shopping_season w
+SET kopteksten = 1
+FROM pa.content_urls_joep c
+WHERE w.url = c.url AND w.kopteksten = 0;
+
+-- Add tracking records
+INSERT INTO pa.jvs_seo_werkvoorraad_kopteksten_check (url, status)
+SELECT c.url, 'success'
+FROM pa.content_urls_joep c
+LEFT JOIN pa.jvs_seo_werkvoorraad_kopteksten_check k ON c.url = k.url
+WHERE k.url IS NULL
+ON CONFLICT (url) DO UPDATE SET status = 'success';
+```
+- **Benefits**:
+  - Efficient single-query update for thousands of URLs
+  - Synchronizes both werkvoorraad and tracking tables
+  - Prevents duplicate content generation
+- **Script**: `backend/sync_werkvoorraad.py`
+- **Result**: Synchronized 17,672 URLs, 0 overlaps remaining
+
+### Link Validation Performance Analysis
+- **Conservative Mode**: 0.5-0.7s delay per link check
+  - 100 items with ~350 links = ~3m52s (~2.3s per item)
+  - Rate: ~1,552 items/hour
+  - Use case: Maximum caution, avoiding any rate limit concerns
+- **Optimized Mode**: No delay between checks
+  - Estimated 5-10x faster than conservative
+  - With 5 workers: ~60K items in ~1 hour
+  - Rate: ~60,000 items/hour (38x faster)
+- **Recommendation**: Use optimized mode for link validation
+  - Link validation just checks HTTP status (HEAD requests)
+  - Much lighter than content scraping
+  - Whitelisted IP has no rate limits
+  - Conservative mode unnecessary for validation workloads
+
 ### Content Generation Performance Optimizations
 - **Problem**: Processing 131K URLs at ~4-10 seconds per URL would take 18-46 days
 - **Goal**: Reduce processing time to 3-9 days (2.8-6x faster)

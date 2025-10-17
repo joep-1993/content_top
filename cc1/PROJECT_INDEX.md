@@ -26,7 +26,11 @@ content_top/
 │   │                     # Schema: campaign_id and campaign_name columns added
 │   ├── gpt_service.py    # AI integration with optimized prompts for concise hyperlink text (3-5 words max)
 │   ├── link_validator.py # Hyperlink validation with HTTP status checking (301/404 detection)
+│   │                     # Conservative mode: 0.5-0.7s delay per link (~1,552 items/hour)
+│   │                     # Optimized mode: No delay (~60K items/hour with 5 workers)
 │   ├── import_content.py # CSV import utility for bulk content upload (semicolon delimiter)
+│   ├── sync_werkvoorraad.py  # Utility: Synchronize werkvoorraad with content table
+│   ├── deduplicate_content.py # Utility: Remove duplicate URLs from content table
 │   ├── thema_ads_service.py  # Thema Ads job management with state persistence
 │   │                          # Features: delete job, campaign info fetching at runtime
 │   ├── thema_ads_schema.sql  # Database schema for job tracking
@@ -290,7 +294,7 @@ python-dotenv==1.0.0      # Environment variable management
 - `DELETE /api/result/{url}` - Delete result and reset URL to pending
 - `GET /api/export/csv` - Export all generated content as CSV
 - `GET /api/export/json` - Export all generated content as JSON
-- `POST /api/validate-links?batch_size=1000&parallel_workers=3` - Validate hyperlinks in content (checks for 301/404, auto-resets to pending if broken) (batch_size: min 1, no upper limit, parallel_workers: 1-10). Only validates URLs not yet validated.
+- `POST /api/validate-links?batch_size=1000&parallel_workers=3&conservative_mode=false` - Validate hyperlinks in content (checks for 301/404, auto-resets to pending if broken) (batch_size: min 1, no upper limit, parallel_workers: 1-10, conservative_mode forces 1 worker with 0.5-0.7s delay per link). Only validates URLs not yet validated.
 - `GET /api/validation-history?limit=20` - Get link validation history with broken link details
 - `DELETE /api/validation-history/reset` - Reset all validation history to allow re-validation of all URLs
 
