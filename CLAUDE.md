@@ -31,6 +31,19 @@ This project is **Content Top** - an SEO content generation system.
 - **Purpose**: Custom identifier for Beslist scraping operations
 - **Location**: `USER_AGENT` constant at top of `scraper_service.py`
 
+## External API Configuration
+
+### Google Ads API
+- **Credentials Location**: `.env` file (see `.env.example` for template)
+- **Required Variables**:
+  - `GOOGLE_DEVELOPER_TOKEN` - Developer token for API access
+  - `GOOGLE_REFRESH_TOKEN` - OAuth2 refresh token
+  - `GOOGLE_CLIENT_ID` - OAuth2 client ID
+  - `GOOGLE_CLIENT_SECRET` - OAuth2 client secret
+  - `GOOGLE_LOGIN_CUSTOMER_ID` - Customer ID for account access
+- **Documentation**: https://developers.google.com/google-ads/api/docs/oauth/cloud-project
+- **Access**: Environment variables automatically loaded in Docker container
+
 ## What It Does
 Processes URLs from database, scrapes product information, generates AI-powered SEO content, and saves results.
 

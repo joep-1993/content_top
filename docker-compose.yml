@@ -22,6 +22,11 @@ services:
       - REDSHIFT_OUTPUT_TABLE=${REDSHIFT_OUTPUT_TABLE:-content_urls_joep}
       - HTTP_PROXY=${HTTP_PROXY:-}
       - HTTPS_PROXY=${HTTPS_PROXY:-}
+      - GOOGLE_DEVELOPER_TOKEN=${GOOGLE_DEVELOPER_TOKEN}
+      - GOOGLE_REFRESH_TOKEN=${GOOGLE_REFRESH_TOKEN}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_LOGIN_CUSTOMER_ID=${GOOGLE_LOGIN_CUSTOMER_ID}
     depends_on:
       - db
     command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
