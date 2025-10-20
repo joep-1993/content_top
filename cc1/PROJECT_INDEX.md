@@ -2,7 +2,7 @@
 _Project structure and technical specs. Update when: creating files, adding dependencies, defining schemas._
 
 ## Stack
-Backend: FastAPI (Python 3.11, ThreadPoolExecutor for parallel processing) | Frontend: Bootstrap 5 + Vanilla JS | Database: PostgreSQL 15 (local tracking) + AWS Redshift (data storage) | AI: OpenAI API | Deploy: Docker + docker-compose | Google Ads: AsyncIO + Batch API (v28) | Automation: Docker multi-stage builds
+Backend: FastAPI (Python 3.11, ThreadPoolExecutor for parallel processing, psycopg2 connection pooling 2-10 conns) | Frontend: Bootstrap 5 + Vanilla JS | Database: PostgreSQL 15 (local tracking) + AWS Redshift (data storage, COPY command for bulk inserts) | AI: OpenAI API | Deploy: Docker + docker-compose | Google Ads: AsyncIO + Batch API (v28) | Automation: Docker multi-stage builds
 
 ## Directory Structure
 ```
@@ -83,7 +83,7 @@ route add -p 65.9.0.0 mask 255.255.0.0 192.168.1.1 metric 1 if 10
 ```bash
 OPENAI_API_KEY=sk-...  # Your OpenAI API key
 DATABASE_URL=postgresql://postgres:postgres@db:5432/myapp
-AI_MODEL=gpt-4o-mini  # Or other OpenAI model (max_tokens: 300 for 100-word content)
+AI_MODEL=gpt-4o-mini  # Or other OpenAI model (max_tokens: 200 for 100-word content, optimized from 300)
 ```
 
 ### Required (Redshift - Output Storage)

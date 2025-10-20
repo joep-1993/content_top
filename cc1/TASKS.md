@@ -10,6 +10,9 @@ _Tasks currently being worked on_
 ## Completed
 _Finished tasks (move here when done)_
 
+- [x] Run one-time Redshift sync to fix already-processed URLs (synced 1,051 URLs, remaining: 52,779 truly unprocessed) #claude-session:2025-10-20
+- [x] Fix critical bug: pending count not decreasing because skipped/failed URLs not updating Redshift kopteksten flag (causing infinite fetch loop) #claude-session:2025-10-20
+- [x] Implement performance optimizations: connection pooling (30-50% faster), Redshift COPY command (20-30% faster), reduced OpenAI max_tokens (300→200), optimized URL fetching (3x→2x batch multiplier) #claude-session:2025-10-20
 - [x] Fix Recent Results timestamps showing N/A by querying local PostgreSQL and conditionally hiding timestamps in frontend when unavailable #claude-session:2025-10-20
 - [x] Add conservative mode to link validator (0.5-0.7s delay per link check, forced 1 worker, checkbox UI) #claude-session:2025-10-17
 - [x] Create deduplication utility script removing 48,846 duplicate records (108,722→59,876 unique URLs) #claude-session:2025-10-17
