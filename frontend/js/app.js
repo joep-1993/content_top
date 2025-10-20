@@ -219,20 +219,21 @@ async function processAllUrls() {
             totalProcessed += data.processed;
             totalFailed += (data.total_attempted - data.processed);
 
-            // Update progress
+            // Update progress based on initial pending count
             const currentStatus = await fetch(`${API_BASE}/api/status`);
             const status = await currentStatus.json();
-            const progress = Math.round((status.processed / status.total_urls) * 100);
+            const processedInThisRun = totalToProcess - status.pending;
+            const progress = Math.round((processedInThisRun / totalToProcess) * 100);
 
             progressBar.style.width = progress + '%';
             progressPercent.textContent = progress + '%';
-            progressText.textContent = `Processed ${status.processed} of ${status.total_urls} URLs`;
+            progressText.textContent = `Processed ${processedInThisRun} of ${totalToProcess} URLs`;
 
             // Show batch results
             let batchHtml = `<div class="alert alert-info">`;
             batchHtml += `<strong>Batch ${batchCount} Complete:</strong> `;
             batchHtml += `${data.processed} successful, ${data.total_attempted - data.processed} failed/skipped<br>`;
-            batchHtml += `<strong>Total Progress:</strong> ${status.processed} of ${status.total_urls} URLs (${progress}%)`;
+            batchHtml += `<strong>Total Progress:</strong> ${processedInThisRun} of ${totalToProcess} URLs (${progress}%)`;
             batchHtml += `</div>`;
             resultDiv.innerHTML = batchHtml;
 
@@ -251,6 +252,7 @@ async function processAllUrls() {
         // Final update
         const finalStatus = await fetch(`${API_BASE}/api/status`);
         const final = await finalStatus.json();
+        const finalProcessed = totalToProcess - final.pending;
 
         progressBar.style.width = '100%';
         progressPercent.textContent = '100%';
@@ -261,8 +263,8 @@ async function processAllUrls() {
             <div class="alert alert-success">
                 <strong>Processing Complete!</strong><br>
                 Total batches: ${batchCount}<br>
-                Total processed: ${final.processed} URLs<br>
-                Pending: ${final.pending} URLs
+                Processed in this run: ${finalProcessed} of ${totalToProcess} URLs<br>
+                Remaining pending: ${final.pending} URLs
             </div>
         `;
 
@@ -307,16 +309,16 @@ async function refreshStatus() {
                 itemDiv.className = 'list-group-item';
                 itemDiv.id = `result-item-${index}`;
 
-                // Format date or show N/A if not available
-                const dateText = item.created_at ? new Date(item.created_at).toLocaleString() : 'N/A';
+                // Format date only if available
+                const dateText = item.created_at ? new Date(item.created_at).toLocaleString() : '';
 
                 // Build the structure
                 itemDiv.innerHTML = `
                     <div class="d-flex w-100 justify-content-between align-items-start">
                         <div style="flex: 1;">
                             <div class="d-flex justify-content-between align-items-start">
-                                <h6 class="mb-1" style="word-break: break-all; max-width: 85%;">${item.url}</h6>
-                                <small class="text-muted text-nowrap ms-2">${dateText}</small>
+                                <h6 class="mb-1" style="word-break: break-all; ${dateText ? 'max-width: 85%;' : ''}">${item.url}</h6>
+                                ${dateText ? `<small class="text-muted text-nowrap ms-2">${dateText}</small>` : ''}
                             </div>
                             <div class="content-preview">
                                 <div class="mb-1" style="font-size: 0.875rem;" id="preview-${index}"></div>

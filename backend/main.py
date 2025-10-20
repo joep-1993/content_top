@@ -6,6 +6,7 @@ from datetime import datetime
 from io import StringIO, BytesIO
 import csv
 import json
+import os
 import asyncio
 from functools import partial
 from concurrent.futures import ThreadPoolExecutor
@@ -81,16 +82,22 @@ def process_single_url(url: str, conservative_mode: bool = False):
         else:
             # Generate AI content
             try:
+                print(f"[DEBUG] Generating AI content for {url[:80]}... with {len(scraped_data['products'])} products")
                 ai_content = generate_product_content(
                     scraped_data['h1_title'],
                     scraped_data['products']
                 )
+                print(f"[DEBUG] AI content generated, length: {len(ai_content)}")
 
                 # Sanitize content for SQL
                 sanitized = sanitize_content(ai_content)
 
                 # Check if content has valid links
-                if not check_content_has_valid_links(ai_content):
+                has_valid_links = check_content_has_valid_links(ai_content)
+                print(f"[DEBUG] Generated content for {url[:80]}... - Has valid links: {has_valid_links}")
+                print(f"[DEBUG] Content preview: {ai_content[:200]}...")
+
+                if not has_valid_links:
                     final_status = 'failed'
                     final_reason = 'no_valid_links'
                     result["status"] = "failed"
@@ -128,6 +135,7 @@ def process_single_url(url: str, conservative_mode: bool = False):
             """, (url, final_status))
 
         conn.commit()
+        print(f"[PROCESSING] {url} - Status: {final_status}" + (f" - Reason: {final_reason}" if final_reason else ""))
         return (result, redshift_ops)
 
     except Exception as e:
@@ -266,6 +274,10 @@ async def process_urls(batch_size: int = 2, parallel_workers: int = 1, conservat
                 output_conn.close()
 
         processed_count = sum(1 for r in results if r['status'] == 'success')
+        skipped_count = sum(1 for r in results if r['status'] == 'skipped')
+        failed_count = sum(1 for r in results if r['status'] == 'failed')
+
+        print(f"[BATCH COMPLETE] Processed: {processed_count}/{len(urls)} | Skipped: {skipped_count} | Failed: {failed_count}")
 
         return {
             "status": "success",
@@ -318,15 +330,19 @@ async def get_status():
         tracked = cur.fetchone()['tracked']
         pending = total - tracked
 
-        # Get recent results from Redshift (no created_at column in Redshift)
-        output_cur.execute("""
-            SELECT url, content
-            FROM pa.content_urls_joep
-            LIMIT 5
-        """)
-        recent_rows = output_cur.fetchall()
-        # Add None for created_at to match expected format
-        recent = [{'url': r['url'], 'content': r['content'], 'created_at': None} for r in recent_rows]
+        # Get recent results from the output database (Redshift or PostgreSQL)
+        # Note: Redshift table may not have id or created_at columns, so we just get 5 rows
+        try:
+            output_cur.execute("""
+                SELECT url, content
+                FROM pa.content_urls_joep
+                LIMIT 5
+            """)
+            recent_rows = output_cur.fetchall()
+            recent = [{'url': r['url'], 'content': r['content'], 'created_at': None} for r in recent_rows]
+        except Exception as e:
+            print(f"[DEBUG] Failed to get recent results: {e}")
+            recent = []
 
         cur.close()
         conn.close()

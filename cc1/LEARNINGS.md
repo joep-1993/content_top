@@ -58,6 +58,39 @@ docker-compose exec app python -m backend.import_content
 - **Solution**: Check DATABASE_URL in docker-compose.yml, apply schema to correct database
 - **Command**: `docker-compose exec -T db psql -U postgres -d content_top < backend/schema.sql`
 
+### Frontend Showing N/A for Timestamps from Redshift
+- **Problem**: Recent Results section showed "N/A" timestamps because Redshift output table (pa.content_urls_joep) lacks created_at column
+- **Cause**: Redshift table schema doesn't include timestamp columns, but frontend expected created_at field
+- **Symptoms**:
+  - API returns `"created_at": null` for all recent results
+  - Frontend displays "N/A" next to every URL
+  - Local PostgreSQL has timestamps but Redshift doesn't
+- **Solution Options**:
+  1. **Query local PostgreSQL for timestamps** (implemented): Use separate connection to local database for recent results with timestamps
+  2. **Hide timestamps in UI** (implemented): Conditionally render timestamp element only when data available
+  3. **Add created_at to Redshift** (not implemented): Requires Redshift schema change and backfill
+- **Implementation**:
+```python
+# Backend: Query local PostgreSQL for timestamps
+try:
+    local_conn = get_db_connection()  # Local PostgreSQL
+    local_cur = local_conn.cursor()
+    local_cur.execute("SELECT url, content, created_at FROM pa.content_urls_joep ORDER BY created_at DESC LIMIT 5")
+    recent = [{'url': r['url'], 'content': r['content'], 'created_at': r['created_at'].isoformat() if r['created_at'] else None} for r in local_cur.fetchall()]
+except:
+    # Fallback: Query Redshift without timestamps
+    recent = [{'url': r['url'], 'content': r['content'], 'created_at': None} for r in output_cur.fetchall()]
+```
+```javascript
+// Frontend: Hide timestamp when null
+const dateText = item.created_at ? new Date(item.created_at).toLocaleString() : '';
+itemDiv.innerHTML = `
+    <h6>${item.url}</h6>
+    ${dateText ? `<small>${dateText}</small>` : ''}  // Only render if available
+`;
+```
+- **Location**: backend/main.py (lines 333-361), frontend/js/app.js (lines 312-322)
+
 ### OpenAI httpx Compatibility
 - **Error**: `TypeError: Client.__init__() got an unexpected keyword argument 'proxies'`
 - **Cause**: OpenAI 1.35.0 incompatible with httpx >= 0.26.0
@@ -238,6 +271,59 @@ api_key = os.getenv("OPENAI_API_KEY")
 with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
     results = list(executor.map(process_single_url, urls))
 ```
+
+### Handling Hybrid Database Schema Differences (Timestamps)
+- **Problem**: Hybrid architecture (PostgreSQL + Redshift) where output table exists in both databases, but Redshift table lacks created_at column
+- **Use Case**: Displaying recent results with timestamps when Redshift is primary output destination
+- **Solution**: Query local PostgreSQL for recent results with timestamps as fallback
+- **Implementation**:
+  1. Check if output connection is Redshift or PostgreSQL
+  2. For Redshift: Query local PostgreSQL connection separately for timestamp data
+  3. Handle gracefully when timestamps unavailable (set to None)
+  4. Frontend conditionally displays timestamps only when available
+- **Benefits**:
+  - Works with schema differences between databases
+  - Graceful degradation when timestamps unavailable
+  - No need to modify Redshift schema
+  - Users see timestamps when possible, clean UI when not
+- **Example**:
+```python
+# Always query local PostgreSQL for timestamps
+try:
+    local_conn = get_db_connection()
+    local_cur = local_conn.cursor()
+    local_cur.execute("SELECT url, content, created_at FROM pa.content_urls_joep ORDER BY created_at DESC LIMIT 5")
+    recent_rows = local_cur.fetchall()
+    recent = [{'url': r['url'], 'content': r['content'], 'created_at': r['created_at'].isoformat() if r.get('created_at') else None} for r in recent_rows]
+except Exception as e:
+    # Fallback to output connection without timestamps
+    output_cur.execute("SELECT url, content FROM pa.content_urls_joep LIMIT 5")
+    recent = [{'url': r['url'], 'content': r['content'], 'created_at': None} for r in output_cur.fetchall()]
+```
+- **Location**: backend/main.py (lines 333-361)
+
+### Conditional UI Element Display Based on Data Availability
+- **Pattern**: Hide UI elements when data is unavailable instead of showing placeholder text like "N/A"
+- **Use Case**: Timestamps, optional metadata, or any field that may not always be present
+- **Benefits**:
+  - Cleaner user interface
+  - Avoids confusing users with "N/A" or "null" text
+  - Dynamic layout adjusts to available data
+- **Implementation**:
+```javascript
+// Check for data availability
+const dateText = item.created_at ? new Date(item.created_at).toLocaleString() : '';
+
+// Conditionally render element
+itemDiv.innerHTML = `
+    <h6 style="${dateText ? 'max-width: 85%;' : ''}">${item.url}</h6>
+    ${dateText ? `<small>${dateText}</small>` : ''}
+`;
+```
+- **Alternative Approaches**:
+  - CSS display: none (requires extra DOM elements)
+  - React conditional rendering (not applicable for vanilla JS)
+- **Location**: frontend/js/app.js (lines 312-322)
 
 ### Database Cleanup and State Reset Workflow
 - **Pattern**: When removing bad AI-generated results, follow 4-step process to ensure clean state
