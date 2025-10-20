@@ -345,10 +345,9 @@ async def get_status():
         """)
         failed = cur.fetchone()['failed']
 
-        # Get pending URLs (not yet attempted)
-        cur.execute("SELECT COUNT(*) as tracked FROM pa.jvs_seo_werkvoorraad_kopteksten_check")
-        tracked = cur.fetchone()['tracked']
-        pending = total - tracked
+        # Get pending URLs directly from Redshift (URLs with kopteksten=0)
+        output_cur.execute("SELECT COUNT(*) as pending FROM pa.jvs_seo_werkvoorraad_shopping_season WHERE kopteksten = 0")
+        pending = output_cur.fetchone()['pending']
 
         # Get recent results from the output database (Redshift or PostgreSQL)
         # Note: Redshift table may not have id or created_at columns, so we just get 5 rows
