@@ -75,11 +75,15 @@ def process_single_url(url: str, conservative_mode: bool = False):
             final_reason = 'scraping_failed'
             result["status"] = "failed"
             result["reason"] = "scraping_failed"
+            # Mark as processed in Redshift to avoid re-fetching
+            redshift_ops.append(('update_werkvoorraad', url))
         elif not scraped_data['products'] or len(scraped_data['products']) == 0:
             final_status = 'skipped'
             final_reason = 'no_products_found'
             result["status"] = "skipped"
             result["reason"] = "no_products_found"
+            # Mark as processed in Redshift to avoid re-fetching
+            redshift_ops.append(('update_werkvoorraad', url))
         else:
             # Generate AI content
             try:
@@ -103,6 +107,8 @@ def process_single_url(url: str, conservative_mode: bool = False):
                     final_reason = 'no_valid_links'
                     result["status"] = "failed"
                     result["reason"] = "no_valid_links"
+                    # Mark as processed in Redshift to avoid re-fetching
+                    redshift_ops.append(('update_werkvoorraad', url))
                 else:
                     # Collect Redshift operations for batch execution
                     redshift_ops.append(('insert_content', url, sanitized))
@@ -117,6 +123,8 @@ def process_single_url(url: str, conservative_mode: bool = False):
                 final_reason = f"ai_generation_error: {str(e)}"
                 result["status"] = "failed"
                 result["reason"] = f"ai_generation_error: {str(e)}"
+                # Mark as processed in Redshift to avoid re-fetching
+                redshift_ops.append(('update_werkvoorraad', url))
 
         # Single DB transaction at the end with final status
         conn = get_db_connection()

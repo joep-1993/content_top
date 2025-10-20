@@ -42,7 +42,8 @@ def get_db_connection():
 
 def return_db_connection(conn):
     """Return PostgreSQL connection to pool"""
-    _get_pg_pool().putconn(conn)
+    if conn:
+        _get_pg_pool().putconn(conn)
 
 def get_redshift_connection():
     """Get Redshift connection from pool"""
@@ -50,7 +51,8 @@ def get_redshift_connection():
 
 def return_redshift_connection(conn):
     """Return Redshift connection to pool"""
-    _get_redshift_pool().putconn(conn)
+    if conn:
+        _get_redshift_pool().putconn(conn)
 
 def get_output_connection():
     """Get connection for output operations - Redshift or PostgreSQL based on config"""
