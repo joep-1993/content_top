@@ -1,25 +1,56 @@
 import os
 import psycopg2
+from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
 
+# Connection pools for reusing connections across requests
+_pg_pool = None
+_redshift_pool = None
+
+def _get_pg_pool():
+    """Get or create PostgreSQL connection pool"""
+    global _pg_pool
+    if _pg_pool is None:
+        _pg_pool = pool.ThreadedConnectionPool(
+            minconn=2,
+            maxconn=10,
+            dsn=os.getenv("DATABASE_URL", "postgresql://postgres:postgres@db:5432/myapp"),
+            cursor_factory=RealDictCursor
+        )
+    return _pg_pool
+
+def _get_redshift_pool():
+    """Get or create Redshift connection pool"""
+    global _redshift_pool
+    if _redshift_pool is None:
+        _redshift_pool = pool.ThreadedConnectionPool(
+            minconn=2,
+            maxconn=10,
+            host=os.getenv("REDSHIFT_HOST"),
+            port=os.getenv("REDSHIFT_PORT", "5439"),
+            dbname=os.getenv("REDSHIFT_DB"),
+            user=os.getenv("REDSHIFT_USER"),
+            password=os.getenv("REDSHIFT_PASSWORD"),
+            cursor_factory=RealDictCursor,
+            connect_timeout=10
+        )
+    return _redshift_pool
+
 def get_db_connection():
-    """Simple database connection for small apps"""
-    return psycopg2.connect(
-        os.getenv("DATABASE_URL", "postgresql://postgres:postgres@db:5432/myapp"),
-        cursor_factory=RealDictCursor
-    )
+    """Get PostgreSQL connection from pool"""
+    return _get_pg_pool().getconn()
+
+def return_db_connection(conn):
+    """Return PostgreSQL connection to pool"""
+    _get_pg_pool().putconn(conn)
 
 def get_redshift_connection():
-    """Get connection to Redshift for output operations"""
-    return psycopg2.connect(
-        host=os.getenv("REDSHIFT_HOST"),
-        port=os.getenv("REDSHIFT_PORT", "5439"),
-        dbname=os.getenv("REDSHIFT_DB"),
-        user=os.getenv("REDSHIFT_USER"),
-        password=os.getenv("REDSHIFT_PASSWORD"),
-        cursor_factory=RealDictCursor,
-        connect_timeout=10
-    )
+    """Get Redshift connection from pool"""
+    return _get_redshift_pool().getconn()
+
+def return_redshift_connection(conn):
+    """Return Redshift connection to pool"""
+    _get_redshift_pool().putconn(conn)
 
 def get_output_connection():
     """Get connection for output operations - Redshift or PostgreSQL based on config"""
@@ -27,6 +58,14 @@ def get_output_connection():
     if use_redshift:
         return get_redshift_connection()
     return get_db_connection()
+
+def return_output_connection(conn):
+    """Return output connection to appropriate pool"""
+    use_redshift = os.getenv("USE_REDSHIFT_OUTPUT", "false").lower() == "true"
+    if use_redshift:
+        return_redshift_connection(conn)
+    else:
+        return_db_connection(conn)
 
 def init_db():
     """Initialize database tables"""

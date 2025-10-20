@@ -8,9 +8,10 @@ import csv
 import json
 import os
 import asyncio
+import tempfile
 from functools import partial
 from concurrent.futures import ThreadPoolExecutor
-from backend.database import get_db_connection, get_output_connection
+from backend.database import get_db_connection, get_output_connection, return_db_connection, return_output_connection
 from backend.scraper_service import scrape_product_page, sanitize_content
 from backend.gpt_service import generate_product_content, check_content_has_valid_links
 from backend.link_validator import validate_content_links
@@ -158,7 +159,7 @@ def process_single_url(url: str, conservative_mode: bool = False):
     finally:
         if conn:
             cur.close()
-            conn.close()
+            return_db_connection(conn)  # Return connection to pool instead of closing
 
 @app.post("/api/process-urls")
 async def process_urls(batch_size: int = 2, parallel_workers: int = 1, conservative_mode: bool = False):
@@ -188,31 +189,29 @@ async def process_urls(batch_size: int = 2, parallel_workers: int = 1, conservat
         output_conn = get_output_connection()
         output_cur = output_conn.cursor()
 
-        # Get successfully processed URLs - only these should be excluded
+        # Get successfully processed URLs from local tracking
         local_conn = get_db_connection()
         local_cur = local_conn.cursor()
         local_cur.execute("""
             SELECT url FROM pa.jvs_seo_werkvoorraad_kopteksten_check
             WHERE status = 'success'
         """)
-        successfully_processed_urls = set(row['url'] for row in local_cur.fetchall())  # Use set for O(1) lookup
+        successfully_processed_urls = set(row['url'] for row in local_cur.fetchall())
         local_cur.close()
-        local_conn.close()
+        return_db_connection(local_conn)
 
-        # Fetch more URLs than needed, filter in Python (faster than complex SQL with large NOT IN)
-        # Fetch batch_size * 3 to account for already-processed URLs
+        # Fetch URLs from Redshift - get 2x batch_size to account for filtering
         output_cur.execute("""
             SELECT url FROM pa.jvs_seo_werkvoorraad_shopping_season
             WHERE kopteksten = 0
             LIMIT %s
-        """, (batch_size * 3,))
+        """, (batch_size * 2,))
 
         all_rows = output_cur.fetchall()
-        # Filter out successfully processed URLs in Python (faster than SQL NOT IN with large lists)
-        # Failed and skipped URLs will be retried
+        # Filter out successfully processed URLs
         rows = [row for row in all_rows if row['url'] not in successfully_processed_urls][:batch_size]
         output_cur.close()
-        output_conn.close()
+        return_output_connection(output_conn)  # Return to pool
 
         if not rows:
             return {
@@ -253,12 +252,25 @@ async def process_urls(batch_size: int = 2, parallel_workers: int = 1, conservat
                         _, url = op
                         update_werkvoorraad_urls.append((url,))
 
-                # Batch INSERT using executemany()
+                # Use COPY for Redshift (5-10x faster) or executemany for PostgreSQL
+                use_redshift = os.getenv("USE_REDSHIFT_OUTPUT", "false").lower() == "true"
+
                 if insert_content_data:
-                    output_cur.executemany("""
-                        INSERT INTO pa.content_urls_joep (url, content)
-                        VALUES (%s, %s)
-                    """, insert_content_data)
+                    if use_redshift:
+                        # Use COPY command for Redshift (much faster for bulk inserts)
+                        buffer = StringIO()
+                        for url, content in insert_content_data:
+                            # Escape tabs and newlines in content
+                            content_escaped = content.replace('\t', ' ').replace('\n', ' ').replace('\r', ' ')
+                            buffer.write(f"{url}\t{content_escaped}\n")
+                        buffer.seek(0)
+                        output_cur.copy_from(buffer, 'pa.content_urls_joep', columns=['url', 'content'], sep='\t')
+                    else:
+                        # Use executemany for PostgreSQL
+                        output_cur.executemany("""
+                            INSERT INTO pa.content_urls_joep (url, content)
+                            VALUES (%s, %s)
+                        """, insert_content_data)
 
                 # Batch UPDATE using executemany()
                 if update_werkvoorraad_urls:
@@ -271,7 +283,7 @@ async def process_urls(batch_size: int = 2, parallel_workers: int = 1, conservat
                 output_conn.commit()
             finally:
                 output_cur.close()
-                output_conn.close()
+                return_output_connection(output_conn)  # Return to pool
 
         processed_count = sum(1 for r in results if r['status'] == 'success')
         skipped_count = sum(1 for r in results if r['status'] == 'skipped')
@@ -345,9 +357,9 @@ async def get_status():
             recent = []
 
         cur.close()
-        conn.close()
+        return_db_connection(conn)
         output_cur.close()
-        output_conn.close()
+        return_output_connection(output_conn)
 
         return {
             "total_urls": total,
@@ -376,7 +388,7 @@ async def export_csv():
         rows = cur.fetchall()
 
         cur.close()
-        conn.close()
+        return_db_connection(conn)
 
         # Create CSV in memory with UTF-8 BOM for proper Excel compatibility
         output = BytesIO()
@@ -419,7 +431,7 @@ async def export_json():
         rows = cur.fetchall()
 
         cur.close()
-        conn.close()
+        return_db_connection(conn)
 
         # Convert to JSON-serializable format
         data = []
@@ -481,7 +493,7 @@ async def upload_urls(file: UploadFile = File(...)):
 
         output_conn.commit()
         output_cur.close()
-        output_conn.close()
+        return_output_connection(output_conn)
 
         return {
             "status": "success",
@@ -517,7 +529,7 @@ async def delete_result(url: str):
 
         output_conn.commit()
         output_cur.close()
-        output_conn.close()
+        return_output_connection(output_conn)
 
         # Delete from local tracking table
         conn = get_db_connection()
@@ -528,7 +540,7 @@ async def delete_result(url: str):
         """, (url,))
         conn.commit()
         cur.close()
-        conn.close()
+        return_db_connection(conn)
 
         return {
             "status": "success",
@@ -605,9 +617,9 @@ async def validate_links(batch_size: int = 10, parallel_workers: int = 3, conser
 
         if not rows:
             output_cur.close()
-            output_conn.close()
+            return_output_connection(output_conn)
             cur.close()
-            conn.close()
+            return_db_connection(conn)
             return {
                 "status": "complete",
                 "message": "No content to validate",
@@ -679,9 +691,9 @@ async def validate_links(batch_size: int = 10, parallel_workers: int = 3, conser
         output_conn.commit()
 
         cur.close()
-        conn.close()
+        return_db_connection(conn)
         output_cur.close()
-        output_conn.close()
+        return_output_connection(output_conn)
 
         return {
             "status": "success",
@@ -715,7 +727,7 @@ async def get_validation_history(limit: int = 20):
         rows = cur.fetchall()
 
         cur.close()
-        conn.close()
+        return_db_connection(conn)
 
         return {
             "status": "success",
@@ -741,7 +753,7 @@ async def reset_validation_history():
         conn.commit()
 
         cur.close()
-        conn.close()
+        return_db_connection(conn)
 
         return {
             "status": "success",

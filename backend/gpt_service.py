@@ -86,7 +86,7 @@ def generate_product_content(h1_title: str, products: List[Dict]) -> str:
     response = client.chat.completions.create(
         model=MODEL,
         messages=messages,
-        max_tokens=300,  # Reduced from 500 - content is max 100 words (~130 tokens)
+        max_tokens=200,  # Optimized for 100-word content (~130 tokens) with buffer
         temperature=0.7
     )
 
@@ -95,9 +95,9 @@ def generate_product_content(h1_title: str, products: List[Dict]) -> str:
 def check_content_has_valid_links(content: str) -> bool:
     """
     Check if generated content contains valid product links.
-    Returns True if content has <a href="/p/ pattern.
+    Returns True if content has <a href="/p/ or <a href="https://www.beslist.nl/p/ pattern.
     """
-    return '<a href="/p/' in content
+    return '<a href="/p/' in content or '<a href="https://www.beslist.nl/p/' in content
 
 # Test function
 if __name__ == "__main__":
