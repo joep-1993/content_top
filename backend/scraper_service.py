@@ -106,7 +106,14 @@ def scrape_product_page(url: str, conservative_mode: bool = False) -> Optional[D
 
         # Check status code
         if response.status_code != 200:
-            print(f"Non-200 status code {response.status_code} for {clean}")
+            status_msg = {
+                403: "Access denied (403 Forbidden)",
+                503: "Service unavailable (503)",
+                500: "Server error (500)",
+                502: "Bad gateway (502)",
+                504: "Gateway timeout (504)"
+            }.get(response.status_code, f"HTTP error ({response.status_code})")
+            print(f"Scraping failed: {status_msg} for {clean}")
             return None
 
         # Parse HTML with lxml (2-3x faster than html.parser)
@@ -119,22 +126,31 @@ def scrape_product_page(url: str, conservative_mode: bool = False) -> Optional[D
         # Check if this is a grouped page (contains FacetValueV2)
         is_grouped = "FacetValueV2" in response.text
 
+        # Extract product URLs from plpUrl fields in JavaScript data (Beslist.nl uses JS navigation)
+        # Product URLs are in format: "plpUrl":"/p/product-name/40000/ean/"
+        product_url_pattern = r'"plpUrl":"(/p/[^"]+/40000/[^"]+/)"'
+        all_product_urls = re.findall(product_url_pattern, response.text)
+
+        # URLs are already unique from plpUrl extraction (one per product)
+        unique_product_urls = all_product_urls
+
         # Extract product containers
         product_containers = soup.select("div.product--WiTVr")
         products = []
 
-        for container in product_containers[:70]:  # Max 70 as in n8n workflow
+        for i, container in enumerate(product_containers[:70]):  # Max 70 as in n8n workflow
             # Extract title
             title_element = container.select_one("h2.product_title--eQD3J")
             title = title_element.get_text(strip=True) if title_element else "No Title"
 
-            # Extract description
+            # Extract description - if not present, use title as fallback
             desc_element = container.select_one("div.productInfo__description--S1odY")
-            listview_content = desc_element.get_text(strip=True) if desc_element else ""
+            listview_content = desc_element.get_text(strip=True) if desc_element else title
 
-            # Extract URL from link
-            link_element = container.select_one("a[href]")
-            product_url = link_element.get("href", "") if link_element else ""
+            # Get URL from regex results by index (URLs are in same order as containers)
+            product_url = ""
+            if i < len(unique_product_urls):
+                product_url = "https://www.beslist.nl" + unique_product_urls[i]
 
             # Only add if both URL and content are valid
             if is_valid_url(product_url) and listview_content:

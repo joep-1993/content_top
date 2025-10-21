@@ -75,8 +75,8 @@ def process_single_url(url: str, conservative_mode: bool = False):
             final_reason = 'scraping_failed'
             result["status"] = "failed"
             result["reason"] = "scraping_failed"
-            # Mark as processed in Redshift to avoid re-fetching
-            redshift_ops.append(('update_werkvoorraad', url))
+            # DO NOT mark as processed in Redshift - keep in pending for retry
+            # Scraping failures (503, timeouts, access denied) should be retried later
         elif not scraped_data['products'] or len(scraped_data['products']) == 0:
             final_status = 'skipped'
             final_reason = 'no_products_found'

@@ -10,6 +10,9 @@ _Tasks currently being worked on_
 ## Completed
 _Finished tasks (move here when done)_
 
+- [x] Fix scraping failure handling: network errors (503, timeout, access denied) now keep URLs in pending for retry instead of marking as processed #claude-session:2025-10-21
+- [x] Improve scraping error messages with specific HTTP status codes (403 Forbidden, 503 Service Unavailable, etc.) #claude-session:2025-10-21
+- [x] Diagnose Docker network connectivity issue after restart (all external connections timing out, including ping/DNS) #claude-session:2025-10-21
 - [x] Run one-time Redshift sync to fix already-processed URLs (synced 1,051 URLs, remaining: 52,779 truly unprocessed) #claude-session:2025-10-20
 - [x] Fix critical bug: pending count not decreasing because skipped/failed URLs not updating Redshift kopteksten flag (causing infinite fetch loop) #claude-session:2025-10-20
 - [x] Implement performance optimizations: connection pooling (30-50% faster), Redshift COPY command (20-30% faster), reduced OpenAI max_tokens (300→200), optimized URL fetching (3x→2x batch multiplier) #claude-session:2025-10-20

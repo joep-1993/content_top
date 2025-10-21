@@ -37,6 +37,40 @@ docker-compose exec app python -m backend.import_content
   - Restart WSL terminal
 - **Documentation**: https://docs.docker.com/go/wsl2/
 
+### Docker Network Connectivity Loss After Restart
+- **Problem**: After restarting Docker, all network connections from container timeout (ping, DNS, HTTP requests)
+- **Symptoms**:
+  - `docker-compose exec -T app python3 -c "requests.get('https://beslist.nl')"` hangs/times out
+  - Even basic commands fail: `ping 8.8.8.8` times out
+  - DNS lookups fail: `nslookup beslist.nl` times out
+  - Scraper returns "scraping_failed" for all URLs
+- **Root Cause Options**:
+  1. **Proxy environment variables**: `HTTP_PROXY`/`HTTPS_PROXY` in docker-compose.yml pointing to invalid/inaccessible proxy
+  2. **VPN routing issues**: VPN split tunneling configuration broken after Docker restart
+  3. **WSL2 network bridge**: WSL2 network adapter needs refresh after Docker restart
+- **Diagnostic Commands**:
+```bash
+# Test from host (should work)
+curl -A "Beslist script voor SEO" https://www.beslist.nl/
+
+# Test from container (fails if network broken)
+docker-compose exec -T app sh -c "ping -c 2 8.8.8.8"
+docker-compose exec -T app sh -c "nslookup beslist.nl"
+```
+- **Solutions** (try in order):
+  1. **WSL restart** (fixes most issues): `wsl --shutdown` from Windows PowerShell, then restart WSL terminal
+  2. **Check/unset proxy variables**:
+```bash
+echo $HTTP_PROXY $HTTPS_PROXY  # Check if set
+unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy
+docker-compose down && docker-compose up -d
+```
+  3. **Remove proxy from docker-compose.yml**: Change `- HTTP_PROXY=${HTTP_PROXY:-}` to `- HTTP_PROXY=`
+  4. **Check VPN configuration**: Verify VPN split tunneling still routes beslist.nl traffic correctly
+- **Prevention**: After restarting Docker, always test basic connectivity before processing URLs
+- **Location**: docker-compose.yml (lines 23-24), network configuration
+- **Date**: 2025-10-21
+
 ### Port Conflicts
 - FastAPI on 8003 (external) → 8000 (internal container port)
 - PostgreSQL on 5433 (not 5432) for same reason
@@ -58,7 +92,7 @@ docker-compose exec app python -m backend.import_content
 - **Solution**: Check DATABASE_URL in docker-compose.yml, apply schema to correct database
 - **Command**: `docker-compose exec -T db psql -U postgres -d content_top < backend/schema.sql`
 
-### Pending Count Not Decreasing After Processing
+### Pending Count Not Decreasing After Processing (UPDATED 2025-10-21)
 - **Problem**: Pending count stays static at 11,756 even after processing 100 URLs, system shows "No URLs to process"
 - **Root Cause**: Skipped and failed URLs were:
   1. ✅ Written to local PostgreSQL tracking table (pa.jvs_seo_werkvoorraad_kopteksten_check)
@@ -70,13 +104,19 @@ docker-compose exec app python -m backend.import_content
   - Result: "No URLs to process" despite 11,756 pending
   - Pending count calculation: total_urls - tracked = constant (never decreases)
 - **Impact**: URLs stuck in infinite loop, no progress possible
-- **Solution**: Add `redshift_ops.append(('update_werkvoorraad', url))` for ALL processing outcomes:
-  - scraping_failed (line 79)
-  - no_products_found (line 86)
-  - no_valid_links (line 111)
-  - ai_generation_error (line 127)
-- **Result**: Redshift kopteksten flag now set to 1 for all processed URLs (success, skipped, failed)
-- **Location**: backend/main.py (lines 79, 86, 111, 127)
+- **Solution (2025-10-20)**: Add `redshift_ops.append(('update_werkvoorraad', url))` for permanent failures:
+  - no_products_found (line 86) - Page loads but has no products
+  - no_valid_links (line 111) - AI generates content without valid links
+  - ai_generation_error (line 127) - AI service error
+- **Solution (2025-10-21)**: **REMOVED** Redshift update for scraping failures:
+  - scraping_failed (line 79) - Network errors, 503, timeouts, access denied
+  - **Reason**: Temporary network/access issues should be retried, not marked as permanently processed
+  - **Behavior**: URLs with scraping failures stay in pending, can be retried on next run
+  - **Status**: Local tracking still records 'failed' status for monitoring
+- **Result**:
+  - Permanent failures (no products, bad content) → marked as processed in Redshift
+  - Temporary failures (network errors) → stay in pending for retry
+- **Location**: backend/main.py (lines 73-127)
 
 ### Frontend Showing N/A for Timestamps from Redshift
 - **Problem**: Recent Results section showed "N/A" timestamps because Redshift output table (pa.content_urls_joep) lacks created_at column
@@ -115,6 +155,35 @@ itemDiv.innerHTML = `
 - **Error**: `TypeError: Client.__init__() got an unexpected keyword argument 'proxies'`
 - **Cause**: OpenAI 1.35.0 incompatible with httpx >= 0.26.0
 - **Solution**: Pin httpx==0.25.2 in requirements.txt
+
+### Beslist.nl AWS WAF Challenge and User Agent Whitelisting
+- **Problem**: Scraper returns "scraping_failed" for all URLs, but pages load fine in browser
+- **Symptoms**:
+  - `curl https://www.beslist.nl/...` returns AWS WAF "Human Verification" challenge page
+  - Same URL with user agent `"Beslist script voor SEO"` returns actual HTML content
+  - Without correct user agent: `<title>Human Verification</title>` and AWS WAF JavaScript challenge
+  - With correct user agent: `<title>Ellen boren goedkoop kopen? | Beste aanbiedingen | beslist.nl</title>`
+- **Root Cause**: Beslist.nl uses AWS WAF (Web Application Firewall) with:
+  1. **User agent whitelisting**: Only allows specific user agents to bypass bot protection
+  2. **JavaScript challenge**: Presents CAPTCHA/challenge for unrecognized bots
+- **Whitelist Details**:
+  - **User Agent**: `"Beslist script voor SEO"` (whitelisted)
+  - **IP Address**: 87.212.193.148 (whitelisted, but user agent is primary authentication)
+- **Testing**:
+```bash
+# Without user agent (gets WAF challenge)
+curl https://www.beslist.nl/products/... | head -c 200
+# Returns: <!DOCTYPE html><html lang="en"><head><title>Human Verification</title>
+
+# With whitelisted user agent (gets actual page)
+curl -A "Beslist script voor SEO" https://www.beslist.nl/products/... | head -c 200
+# Returns: <!DOCTYPE html><html lang=nl-NL><head><title>Ellen boren goedkoop kopen?
+```
+- **Solution**: Ensure scraper uses correct user agent `"Beslist script voor SEO"`
+- **Verification**: Check `USER_AGENT` constant in backend/scraper_service.py (line 11)
+- **Important**: User agent authentication works regardless of IP address (confirmed working from 94.142.210.226, not just 87.212.193.148)
+- **Location**: backend/scraper_service.py (line 11, 87)
+- **Date**: 2025-10-21
 
 ### AI Generating Long Hyperlink Text
 - **Problem**: AI generates very long anchor text (e.g., full product names with specifications like "Beeztees kattentuigje Hearts zwart 120 x 1 cm")
