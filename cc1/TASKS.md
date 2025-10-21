@@ -10,6 +10,9 @@ _Tasks currently being worked on_
 ## Completed
 _Finished tasks (move here when done)_
 
+- [x] Implement hidden 503 detection and auto-stop after 3 consecutive scraping failures (rate limit protection) #claude-session:2025-10-21
+- [x] Reset 33,970 failed/skipped URLs back to pending state in batches (fixing false "no_products_found" from rate limiting) #claude-session:2025-10-21
+- [x] Fix URL upload handling CSV format with relative URLs (convert /products/... to https://www.beslist.nl/products/..., Redshift-compatible batch checking) #claude-session:2025-10-21
 - [x] Fix scraping failure handling: network errors (503, timeout, access denied) now keep URLs in pending for retry instead of marking as processed #claude-session:2025-10-21
 - [x] Improve scraping error messages with specific HTTP status codes (403 Forbidden, 503 Service Unavailable, etc.) #claude-session:2025-10-21
 - [x] Diagnose Docker network connectivity issue after restart (all external connections timing out, including ping/DNS) #claude-session:2025-10-21

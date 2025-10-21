@@ -239,9 +239,21 @@ async def process_urls(batch_size: int = 2, parallel_workers: int = 1, conservat
         # Separate results and Redshift operations
         results = []
         all_redshift_ops = []
+        consecutive_failures = 0
+
         for result, ops in result_tuples:
             results.append(result)
             all_redshift_ops.extend(ops)
+
+            # Check for consecutive scraping failures (503 errors)
+            if result['status'] == 'failed' and result.get('reason') == 'scraping_failed':
+                consecutive_failures += 1
+                # Stop if we get 3 consecutive 503 errors (rate limited)
+                if consecutive_failures >= 3:
+                    print(f"[RATE LIMIT DETECTED] Stopping batch - {consecutive_failures} consecutive scraping failures detected")
+                    break
+            else:
+                consecutive_failures = 0  # Reset counter on success
 
         # Batch execute all Redshift operations using executemany() for better performance
         if all_redshift_ops:
@@ -296,13 +308,19 @@ async def process_urls(batch_size: int = 2, parallel_workers: int = 1, conservat
         processed_count = sum(1 for r in results if r['status'] == 'success')
         skipped_count = sum(1 for r in results if r['status'] == 'skipped')
         failed_count = sum(1 for r in results if r['status'] == 'failed')
+        rate_limited = consecutive_failures >= 3
 
-        print(f"[BATCH COMPLETE] Processed: {processed_count}/{len(urls)} | Skipped: {skipped_count} | Failed: {failed_count}")
+        if rate_limited:
+            print(f"[BATCH STOPPED - RATE LIMITED] Processed: {processed_count}/{len(urls)} | Skipped: {skipped_count} | Failed: {failed_count}")
+        else:
+            print(f"[BATCH COMPLETE] Processed: {processed_count}/{len(urls)} | Skipped: {skipped_count} | Failed: {failed_count}")
 
         return {
-            "status": "success",
+            "status": "rate_limited" if rate_limited else "success",
             "processed": processed_count,
-            "total_attempted": len(urls),
+            "total_attempted": len(results),
+            "rate_limited": rate_limited,
+            "message": "Stopped due to rate limiting - wait before retrying" if rate_limited else None,
             "results": results
         }
 
@@ -466,10 +484,30 @@ async def upload_urls(file: UploadFile = File(...)):
     try:
         # Read file content
         content = await file.read()
-        urls = content.decode('utf-8').strip().split('\n')
 
-        # Filter empty lines
-        urls = [url.strip() for url in urls if url.strip()]
+        # Try to decode with UTF-8 BOM first, then fall back to UTF-8
+        try:
+            text_content = content.decode('utf-8-sig')
+        except:
+            text_content = content.decode('utf-8')
+
+        # Handle both newlines and semicolons as separators (for CSV format)
+        lines = text_content.strip().replace('\r\n', '\n').replace('\r', '\n').split('\n')
+
+        # Extract URLs from each line (first column if CSV)
+        urls = []
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            # If line contains semicolons, it's CSV format - take first column
+            if ';' in line:
+                url = line.split(';')[0].strip()
+            else:
+                url = line.strip()
+
+            if url and not url.startswith('url'):  # Skip CSV header
+                urls.append(url)
 
         if not urls:
             raise HTTPException(status_code=400, detail="No URLs found in file")
@@ -480,23 +518,45 @@ async def upload_urls(file: UploadFile = File(...)):
 
         added_count = 0
         duplicate_count = 0
+        base_url = "https://www.beslist.nl"
 
+        # Convert relative URLs to absolute URLs
+        full_urls = []
         for url in urls:
-            try:
-                output_cur.execute("""
+            if url.startswith('/'):
+                full_url = base_url + url
+            else:
+                full_url = url
+            full_urls.append(full_url)
+
+        # Get existing URLs from database in batches (Redshift performs better with smaller batches)
+        existing_urls = set()
+        batch_size = 500  # Check in batches of 500
+
+        for i in range(0, len(full_urls), batch_size):
+            batch = full_urls[i:i + batch_size]
+            placeholders = ','.join(['%s'] * len(batch))
+            output_cur.execute(f"""
+                SELECT url FROM pa.jvs_seo_werkvoorraad_shopping_season
+                WHERE url IN ({placeholders})
+            """, batch)
+            existing_urls.update(row['url'] for row in output_cur.fetchall())
+
+        # Filter out duplicates
+        new_urls = [(url,) for url in full_urls if url not in existing_urls]
+        duplicate_count = len(full_urls) - len(new_urls)
+
+        # Batch insert new URLs
+        if new_urls:
+            # Insert in batches for better Redshift performance
+            insert_batch_size = 100
+            for i in range(0, len(new_urls), insert_batch_size):
+                batch = new_urls[i:i + insert_batch_size]
+                output_cur.executemany("""
                     INSERT INTO pa.jvs_seo_werkvoorraad_shopping_season (url, kopteksten)
                     VALUES (%s, 0)
-                    ON CONFLICT (url) DO NOTHING
-                """, (url,))
-
-                if output_cur.rowcount > 0:
-                    added_count += 1
-                else:
-                    duplicate_count += 1
-
-            except Exception as e:
-                # Skip invalid URLs
-                continue
+                """, batch)
+            added_count = len(new_urls)
 
         output_conn.commit()
         output_cur.close()

@@ -37,6 +37,49 @@ docker-compose exec app python -m backend.import_content
   - Restart WSL terminal
 - **Documentation**: https://docs.docker.com/go/wsl2/
 
+### Redshift SQL Differences - ON CONFLICT Not Supported
+- **Problem**: URL upload fails with syntax error: "syntax error at or near 'ON'"
+- **Cause**: PostgreSQL's `ON CONFLICT DO NOTHING` syntax not supported by Redshift
+- **Impact**: Cannot use INSERT ... ON CONFLICT for duplicate handling in Redshift
+- **Solution**: Use batch checking strategy instead:
+  1. Query existing URLs with WHERE IN (batches of 500)
+  2. Filter duplicates in Python using set difference
+  3. Batch insert only new URLs with executemany()
+- **Example**:
+```python
+# Get existing URLs in batches
+existing_urls = set()
+batch_size = 500
+for i in range(0, len(urls), batch_size):
+    batch = urls[i:i + batch_size]
+    placeholders = ','.join(['%s'] * len(batch))
+    cur.execute(f"SELECT url FROM table WHERE url IN ({placeholders})", batch)
+    existing_urls.update(row['url'] for row in cur.fetchall())
+
+# Filter and insert new URLs
+new_urls = [(url,) for url in urls if url not in existing_urls]
+cur.executemany("INSERT INTO table (url) VALUES (%s)", new_urls)
+```
+- **Performance**: Batching queries (500 URLs per query) keeps Redshift queries fast
+- **Location**: backend/main.py - `/api/upload-urls` endpoint (lines 463-542)
+- **Date**: 2025-10-21
+
+### Beslist.nl Hidden 503 Errors in HTML Body
+- **Problem**: Scraper marks URLs as "no_products_found" when actually rate limited
+- **Cause**: Beslist.nl returns HTTP 200 status with "503 Service Unavailable" in HTML body when rate limited
+- **Impact**: 33,946 URLs incorrectly marked as failed/skipped due to undetected rate limiting
+- **Detection**:
+```python
+if response.status_code == 200:
+    # Check for hidden 503 in HTML body
+    if '503' in response.text or 'Service Unavailable' in response.text:
+        print(f"Scraping failed: Hidden 503 (rate limited) for {url}")
+        return None  # Keep URL in pending for retry
+```
+- **Behavior**: Returning None from scraper keeps URL in pending state (not marked as processed)
+- **Location**: backend/scraper_service.py (lines 119-123)
+- **Date**: 2025-10-21
+
 ### Docker Network Connectivity Loss After Restart
 - **Problem**: After restarting Docker, all network connections from container timeout (ping, DNS, HTTP requests)
 - **Symptoms**:
@@ -944,6 +987,67 @@ else:
 - **Performance**: COPY is 5-10x faster than INSERT for bulk operations in Redshift
 - **Location**: backend/main.py (lines 260-275)
 
+### Auto-Stop on Consecutive Scraping Failures
+- **Pattern**: Track consecutive failures and stop batch processing after threshold
+- **Use Case**: Detecting rate limiting (503 errors) and preventing wasted processing time
+- **Implementation**:
+```python
+consecutive_failures = 0
+for result in results:
+    if result['status'] == 'failed' and result.get('reason') == 'scraping_failed':
+        consecutive_failures += 1
+        if consecutive_failures >= 3:
+            print(f"[RATE LIMIT DETECTED] Stopping batch - {consecutive_failures} consecutive scraping failures")
+            break
+    else:
+        consecutive_failures = 0  # Reset on success
+```
+- **Benefits**:
+  - Prevents marking thousands of URLs incorrectly during rate limiting
+  - Saves API costs (OpenAI) by stopping early
+  - Clear signal to user that system is rate limited
+  - Automatic recovery when resumed later
+- **Threshold**: 3 consecutive failures (configurable)
+- **Location**: backend/main.py - `process_urls()` endpoint (lines 242-256)
+- **Date**: 2025-10-21
+
+### CSV Upload with Relative URL Conversion
+- **Pattern**: Handle CSV files with relative URLs by converting to absolute URLs
+- **Use Case**: Importing URL lists where some URLs are relative (/products/...) instead of absolute (https://...)
+- **Implementation**:
+```python
+import csv
+from io import StringIO
+
+# Parse CSV with auto-detected delimiter
+csvfile = StringIO(file_content.decode('utf-8-sig'))
+dialect = csv.Sniffer().sniff(csvfile.read(1024), delimiters=',;\t')
+csvfile.seek(0)
+reader = csv.reader(csvfile, dialect)
+
+# Convert relative URLs to absolute
+base_url = 'https://www.beslist.nl'
+urls = []
+for row in reader:
+    if row and row[0].strip():
+        url = row[0].strip()
+        # Convert relative to absolute
+        if url.startswith('/'):
+            url = base_url + url
+        urls.append(url)
+```
+- **Benefits**:
+  - Handles both relative and absolute URLs seamlessly
+  - Auto-detects CSV delimiter (comma, semicolon, tab)
+  - Handles UTF-8 BOM encoding
+  - Skips empty rows automatically
+- **Batch Checking**: For Redshift compatibility (no ON CONFLICT), use batch checking:
+  - Query existing URLs in batches of 500
+  - Filter duplicates in Python
+  - Insert only new URLs
+- **Location**: backend/main.py - `/api/upload-urls` endpoint (lines 463-542)
+- **Date**: 2025-10-21
+
 ### Content Generation Performance Optimizations
 - **Problem**: Processing 131K URLs at ~4-10 seconds per URL would take 18-46 days
 - **Goal**: Reduce processing time to 3-9 days (2.8-6x faster)
@@ -973,4 +1077,4 @@ else:
 - **Note on Scraping Delay**: Initial attempt at 0.05-0.1s was too aggressive, causing Cloudflare HTTP 202 (queuing) responses even with whitelisted IP. Adjusted to 0.2-0.3s as sweet spot between speed and avoiding rate limits.
 
 ---
-_Last updated: 2025-10-10_
+_Last updated: 2025-10-21_

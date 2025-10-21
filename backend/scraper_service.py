@@ -116,6 +116,12 @@ def scrape_product_page(url: str, conservative_mode: bool = False) -> Optional[D
             print(f"Scraping failed: {status_msg} for {clean}")
             return None
 
+        # Check for hidden 503 errors in HTML body (Beslist.nl returns 200 with 503 message)
+        # This happens when rate limited - we should retry later, not mark as "no products"
+        if '503' in response.text or 'Service Unavailable' in response.text:
+            print(f"Scraping failed: Hidden 503 (rate limited) for {clean}")
+            return None
+
         # Parse HTML with lxml (2-3x faster than html.parser)
         soup = BeautifulSoup(response.text, 'lxml')
 

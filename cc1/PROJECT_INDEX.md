@@ -35,7 +35,7 @@ content_top/
 │   │                          # Features: delete job, campaign info fetching at runtime
 │   ├── thema_ads_schema.sql  # Database schema for job tracking
 │   ├── schema.sql        # SEO workflow database schema
-│   └── scraper_service.py    # Web scraping utilities with 0.2-0.3s delay (optimized mode) or 0.5-0.7s delay (conservative mode), custom UA 'Beslist script voor SEO' (bypasses VPN, whitelisted IP has no rate limits)
+│   └── scraper_service.py    # Web scraping utilities with 0.2-0.3s delay (optimized mode) or 0.5-0.7s delay (conservative mode), custom UA 'Beslist script voor SEO' (bypasses VPN, whitelisted IP has no rate limits), hidden 503 detection (checks HTML body for rate limiting)
 ├── openvpn               # OpenVPN client config (with pull-filter for split tunneling)
 ├── frontend/
 │   ├── index.html        # Main page (Bootstrap CDN)
@@ -397,4 +397,4 @@ Frontend has two tabs:
 For detailed architectural decisions, design patterns, and technology rationales, see **ARCHITECTURE.md** in the project root.
 
 ---
-_Last updated: 2025-10-17_
+_Last updated: 2025-10-21_
