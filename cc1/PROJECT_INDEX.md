@@ -35,7 +35,7 @@ content_top/
 │   │                          # Features: delete job, campaign info fetching at runtime
 │   ├── thema_ads_schema.sql  # Database schema for job tracking
 │   ├── schema.sql        # SEO workflow database schema
-│   └── scraper_service.py    # Web scraping utilities with 0.2-0.3s delay (optimized mode) or 0.5-0.7s delay (conservative mode), custom UA 'Beslist script voor SEO' (bypasses VPN, whitelisted IP has no rate limits), hidden 503 detection (checks HTML body for rate limiting)
+│   └── scraper_service.py    # Web scraping utilities with 0.2-0.3s delay (optimized mode) or 0.5-0.7s delay (conservative mode), custom UA 'Beslist script voor SEO' (bypasses VPN, whitelisted IP has no rate limits), hidden 503 detection (checks HTML body, returns {'error': '503'} for immediate batch stop)
 ├── openvpn               # OpenVPN client config (with pull-filter for split tunneling)
 ├── frontend/
 │   ├── index.html        # Main page (Bootstrap CDN)
@@ -156,7 +156,7 @@ SERVICE_ACCOUNT_FILE=C:\Users\YourName\Downloads\Python\service-account.json
 - Thema Ads tables (jobs, job_items, input_data)
 
 **Redshift** (persistent data):
-- `pa.jvs_seo_werkvoorraad_shopping_season` - Work queue (72,992 URLs for shopping season)
+- `pa.jvs_seo_werkvoorraad_shopping_season` - Work queue (72,992 URLs for shopping season, kopteksten: 0=pending, 1=has content, 2=processed without content)
 - `pa.content_urls_joep` - Generated content (columns: url, content)
 
 ### Thema Ads Job Tracking
@@ -210,7 +210,7 @@ CREATE TABLE thema_ads_input_data (
 -- SEO workflow tables
 CREATE TABLE pa.jvs_seo_werkvoorraad_shopping_season (
     url VARCHAR(500) PRIMARY KEY,
-    kopteksten INTEGER DEFAULT 0,
+    kopteksten INTEGER DEFAULT 0,  -- 0=pending, 1=has content, 2=processed without content
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

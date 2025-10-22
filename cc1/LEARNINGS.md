@@ -64,6 +64,23 @@ cur.executemany("INSERT INTO table (url) VALUES (%s)", new_urls)
 - **Location**: backend/main.py - `/api/upload-urls` endpoint (lines 463-542)
 - **Date**: 2025-10-21
 
+### Frontend Showing NaN/undefined in Batch Progress
+- **Problem**: Frontend displays "Batch 1 Complete: undefined successful, NaN failed/skipped" during batch processing
+- **Cause**: JavaScript directly using `data.processed` and `data.total_attempted` without null/undefined checks
+- **Symptoms**:
+  - Progress text shows "undefined" and "NaN" instead of numbers
+  - Happens when API response has missing or undefined fields
+  - Calculations like `total_attempted - processed` produce NaN
+- **Solution**: Add default values using || operator:
+```javascript
+const batchProcessed = data.processed || 0;
+const batchTotal = data.total_attempted || 0;
+const batchFailed = batchTotal - batchProcessed;
+```
+- **Benefits**: Safe handling of undefined/null values, always displays valid numbers
+- **Location**: frontend/js/app.js (lines 219-242)
+- **Date**: 2025-10-22
+
 ### Beslist.nl Hidden 503 Errors in HTML Body
 - **Problem**: Scraper marks URLs as "no_products_found" when actually rate limited
 - **Cause**: Beslist.nl returns HTTP 200 status with "503 Service Unavailable" in HTML body when rate limited
@@ -135,7 +152,7 @@ docker-compose down && docker-compose up -d
 - **Solution**: Check DATABASE_URL in docker-compose.yml, apply schema to correct database
 - **Command**: `docker-compose exec -T db psql -U postgres -d content_top < backend/schema.sql`
 
-### Pending Count Not Decreasing After Processing (UPDATED 2025-10-21)
+### Pending Count Not Decreasing After Processing (UPDATED 2025-10-22)
 - **Problem**: Pending count stays static at 11,756 even after processing 100 URLs, system shows "No URLs to process"
 - **Root Cause**: Skipped and failed URLs were:
   1. ✅ Written to local PostgreSQL tracking table (pa.jvs_seo_werkvoorraad_kopteksten_check)
@@ -156,10 +173,18 @@ docker-compose down && docker-compose up -d
   - **Reason**: Temporary network/access issues should be retried, not marked as permanently processed
   - **Behavior**: URLs with scraping failures stay in pending, can be retried on next run
   - **Status**: Local tracking still records 'failed' status for monitoring
+- **Solution (2025-10-22)**: **Three-state tracking system** + **503-specific handling**:
+  - kopteksten=0: Pending (not yet processed)
+  - kopteksten=1: Has content (successfully processed)
+  - kopteksten=2: Processed without content (skipped/failed non-503 errors)
+  - **503 errors (rate_limited_503)**: NOT marked in Redshift, kept pending for retry, batch stops immediately
+  - **Local tracking query changed**: Now filters ALL processed URLs (not just successful), preventing infinite retry loop
 - **Result**:
-  - Permanent failures (no products, bad content) → marked as processed in Redshift
-  - Temporary failures (network errors) → stay in pending for retry
-- **Location**: backend/main.py (lines 73-127)
+  - Permanent failures (no products, bad content) → kopteksten=2 in Redshift
+  - Successful content → kopteksten=1 in Redshift
+  - 503 rate limiting → kopteksten=0 (stays pending), batch stops immediately
+  - Non-503 scraping failures → kopteksten=2 (won't retry)
+- **Location**: backend/main.py (lines 73-135, 247-260), backend/scraper_service.py (returns {'error': '503'})
 
 ### Frontend Showing N/A for Timestamps from Redshift
 - **Problem**: Recent Results section showed "N/A" timestamps because Redshift output table (pa.content_urls_joep) lacks created_at column
@@ -986,6 +1011,53 @@ else:
   - Automatically falls back to executemany() for PostgreSQL
 - **Performance**: COPY is 5-10x faster than INSERT for bulk operations in Redshift
 - **Location**: backend/main.py (lines 260-275)
+
+### Three-State URL Tracking in Redshift
+- **Pattern**: Use tri-state flag instead of boolean for better tracking granularity
+- **Use Case**: Need to distinguish between "successfully processed with content" vs "processed but no usable content" vs "not yet processed"
+- **Implementation**:
+  - `kopteksten = 0`: Pending (not yet processed)
+  - `kopteksten = 1`: Successfully processed with content (has entry in content_urls_joep table)
+  - `kopteksten = 2`: Processed without content (skipped, failed, no products, AI errors, etc.)
+- **Benefits**:
+  - Query for problematic URLs: `WHERE kopteksten = 2` shows all non-productive URLs
+  - Better analytics: Can calculate success rate, skip rate, etc.
+  - Clear distinction between "has content" and "tried but failed"
+  - Prevents re-processing of legitimately empty pages
+- **Redshift Operations**:
+  - Success: `('update_werkvoorraad_success', url)` → sets kopteksten=1
+  - Processed without content: `('update_werkvoorraad_processed', url)` → sets kopteksten=2
+  - 503 errors: No Redshift update → stays kopteksten=0 for retry
+- **Location**: backend/main.py (lines 73-135 for logic, 267-308 for batch execution)
+- **Date**: 2025-10-22
+
+### Distinguishing Scraping Failure Types for Retry Logic
+- **Pattern**: Return different indicators from scraper for retriable vs non-retriable failures
+- **Use Case**: Need to stop batch immediately on rate limiting (503) but mark other failures as processed
+- **Implementation**:
+  - **503 errors** (rate limiting): Return `{'error': '503'}` - triggers immediate batch stop
+  - **Other failures** (timeout, network error): Return `None` - marked as processed (kopteksten=2)
+  - **Success**: Return dict with scraped data
+- **Benefits**:
+  - Batch stops immediately on first 503 (not after 3 consecutive failures)
+  - Non-retriable failures (timeout, connection error) don't stay in pending forever
+  - Clear signal to calling code about failure type
+  - Prevents wasting API calls when rate limited
+- **Processing Logic**:
+```python
+scraped_data = scrape_product_page(url)
+if scraped_data and scraped_data.get('error') == '503':
+    # Rate limited - keep pending, stop batch
+    result["reason"] = "rate_limited_503"
+    rate_limited = True
+    break
+elif not scraped_data:
+    # Other failure - mark as processed (kopteksten=2)
+    result["reason"] = "scraping_failed"
+    redshift_ops.append(('update_werkvoorraad_processed', url))
+```
+- **Location**: backend/scraper_service.py (returns {'error': '503'}), backend/main.py (lines 73-87, 256-260)
+- **Date**: 2025-10-22
 
 ### Auto-Stop on Consecutive Scraping Failures
 - **Pattern**: Track consecutive failures and stop batch processing after threshold

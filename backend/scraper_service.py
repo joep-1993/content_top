@@ -65,7 +65,10 @@ def scrape_product_page(url: str, conservative_mode: bool = False) -> Optional[D
         url: URL to scrape
         conservative_mode: If True, use conservative rate (max 2 URLs/sec). Default: False (optimized rate)
 
-    Returns None if request fails or statuscode != 200
+    Returns:
+        - Dict with scraped data on success
+        - Dict with {'error': '503'} if rate limited (503 error)
+        - None for other failures (timeout, network error, etc)
     """
     try:
         # Clean URL first
@@ -114,13 +117,18 @@ def scrape_product_page(url: str, conservative_mode: bool = False) -> Optional[D
                 504: "Gateway timeout (504)"
             }.get(response.status_code, f"HTTP error ({response.status_code})")
             print(f"Scraping failed: {status_msg} for {clean}")
+            # Return special indicator for 503 errors (rate limiting)
+            if response.status_code == 503:
+                return {'error': '503'}
             return None
 
         # Check for hidden 503 errors in HTML body (Beslist.nl returns 200 with 503 message)
         # This happens when rate limited - we should retry later, not mark as "no products"
-        if '503' in response.text or 'Service Unavailable' in response.text:
+        # Use more specific checks to avoid false positives from URLs/IDs containing "503"
+        response_lower = response.text.lower()
+        if 'service unavailable' in response_lower or '503 service' in response_lower or 'error 503' in response_lower:
             print(f"Scraping failed: Hidden 503 (rate limited) for {clean}")
-            return None
+            return {'error': '503'}
 
         # Parse HTML with lxml (2-3x faster than html.parser)
         soup = BeautifulSoup(response.text, 'lxml')
@@ -131,14 +139,6 @@ def scrape_product_page(url: str, conservative_mode: bool = False) -> Optional[D
 
         # Check if this is a grouped page (contains FacetValueV2)
         is_grouped = "FacetValueV2" in response.text
-
-        # Extract product URLs from plpUrl fields in JavaScript data (Beslist.nl uses JS navigation)
-        # Product URLs are in format: "plpUrl":"/p/product-name/40000/ean/"
-        product_url_pattern = r'"plpUrl":"(/p/[^"]+/40000/[^"]+/)"'
-        all_product_urls = re.findall(product_url_pattern, response.text)
-
-        # URLs are already unique from plpUrl extraction (one per product)
-        unique_product_urls = all_product_urls
 
         # Extract product containers
         product_containers = soup.select("div.product--WiTVr")
@@ -153,10 +153,16 @@ def scrape_product_page(url: str, conservative_mode: bool = False) -> Optional[D
             desc_element = container.select_one("div.productInfo__description--S1odY")
             listview_content = desc_element.get_text(strip=True) if desc_element else title
 
-            # Get URL from regex results by index (URLs are in same order as containers)
+            # Extract product URL from <a> tag with class productLink--zqrcp
+            link_element = container.select_one("a.productLink--zqrcp")
             product_url = ""
-            if i < len(unique_product_urls):
-                product_url = "https://www.beslist.nl" + unique_product_urls[i]
+            if link_element and link_element.get("href"):
+                href = link_element.get("href")
+                # Make absolute URL if relative
+                if href.startswith("/"):
+                    product_url = "https://www.beslist.nl" + href
+                else:
+                    product_url = href
 
             # Only add if both URL and content are valid
             if is_valid_url(product_url) and listview_content:

@@ -216,8 +216,8 @@ async function processAllUrls() {
                 break;
             }
 
-            totalProcessed += data.processed;
-            totalFailed += (data.total_attempted - data.processed);
+            totalProcessed += (data.processed || 0);
+            totalFailed += ((data.total_attempted || 0) - (data.processed || 0));
 
             // Update progress based on initial pending count
             const currentStatus = await fetch(`${API_BASE}/api/status`);
@@ -230,9 +230,13 @@ async function processAllUrls() {
             progressText.textContent = `Processed ${processedInThisRun} of ${totalToProcess} URLs`;
 
             // Show batch results
+            const batchProcessed = data.processed || 0;
+            const batchTotal = data.total_attempted || 0;
+            const batchFailed = batchTotal - batchProcessed;
+
             let batchHtml = `<div class="alert alert-info">`;
             batchHtml += `<strong>Batch ${batchCount} Complete:</strong> `;
-            batchHtml += `${data.processed} successful, ${data.total_attempted - data.processed} failed/skipped<br>`;
+            batchHtml += `${batchProcessed} successful, ${batchFailed} failed/skipped<br>`;
             batchHtml += `<strong>Total Progress:</strong> ${processedInThisRun} of ${totalToProcess} URLs (${progress}%)`;
             batchHtml += `</div>`;
             resultDiv.innerHTML = batchHtml;

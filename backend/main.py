@@ -70,20 +70,28 @@ def process_single_url(url: str, conservative_mode: bool = False):
         # Scrape the URL first (no DB operations yet)
         scraped_data = scrape_product_page(url, conservative_mode=conservative_mode)
 
-        if not scraped_data:
+        # Check for 503 error (rate limiting) - should stop batch processing
+        if scraped_data and scraped_data.get('error') == '503':
+            final_status = 'failed'
+            final_reason = 'rate_limited_503'
+            result["status"] = "failed"
+            result["reason"] = "rate_limited_503"
+            # DO NOT mark as processed in Redshift - keep in pending for retry
+            # 503 errors should stop the batch to avoid further rate limiting
+        elif not scraped_data:
             final_status = 'failed'
             final_reason = 'scraping_failed'
             result["status"] = "failed"
             result["reason"] = "scraping_failed"
-            # DO NOT mark as processed in Redshift - keep in pending for retry
-            # Scraping failures (503, timeouts, access denied) should be retried later
+            # Mark as processed without content (kopteksten = 2) - other failures won't benefit from retry
+            redshift_ops.append(('update_werkvoorraad_processed', url))
         elif not scraped_data['products'] or len(scraped_data['products']) == 0:
             final_status = 'skipped'
             final_reason = 'no_products_found'
             result["status"] = "skipped"
             result["reason"] = "no_products_found"
-            # Mark as processed in Redshift to avoid re-fetching
-            redshift_ops.append(('update_werkvoorraad', url))
+            # Mark as processed without content (kopteksten = 2) to avoid re-fetching
+            redshift_ops.append(('update_werkvoorraad_processed', url))
         else:
             # Generate AI content
             try:
@@ -107,12 +115,12 @@ def process_single_url(url: str, conservative_mode: bool = False):
                     final_reason = 'no_valid_links'
                     result["status"] = "failed"
                     result["reason"] = "no_valid_links"
-                    # Mark as processed in Redshift to avoid re-fetching
-                    redshift_ops.append(('update_werkvoorraad', url))
+                    # Mark as processed without content (kopteksten = 2) - no valid links means no usable content
+                    redshift_ops.append(('update_werkvoorraad_processed', url))
                 else:
                     # Collect Redshift operations for batch execution
                     redshift_ops.append(('insert_content', url, sanitized))
-                    redshift_ops.append(('update_werkvoorraad', url))
+                    redshift_ops.append(('update_werkvoorraad_success', url))
 
                     final_status = 'success'
                     result["status"] = "success"
@@ -123,8 +131,8 @@ def process_single_url(url: str, conservative_mode: bool = False):
                 final_reason = f"ai_generation_error: {str(e)}"
                 result["status"] = "failed"
                 result["reason"] = f"ai_generation_error: {str(e)}"
-                # Mark as processed in Redshift to avoid re-fetching
-                redshift_ops.append(('update_werkvoorraad', url))
+                # Mark as processed without content (kopteksten = 2) - AI generation failed
+                redshift_ops.append(('update_werkvoorraad_processed', url))
 
         # Single DB transaction at the end with final status
         conn = get_db_connection()
@@ -197,12 +205,12 @@ async def process_urls(batch_size: int = 2, parallel_workers: int = 1, conservat
         output_conn = get_output_connection()
         output_cur = output_conn.cursor()
 
-        # Get successfully processed URLs from local tracking
+        # Get all processed URLs from local tracking (success, skipped, and failed)
+        # This prevents retrying URLs that have already been processed
         local_conn = get_db_connection()
         local_cur = local_conn.cursor()
         local_cur.execute("""
             SELECT url FROM pa.jvs_seo_werkvoorraad_kopteksten_check
-            WHERE status = 'success'
         """)
         successfully_processed_urls = set(row['url'] for row in local_cur.fetchall())
         local_cur.close()
@@ -239,21 +247,17 @@ async def process_urls(batch_size: int = 2, parallel_workers: int = 1, conservat
         # Separate results and Redshift operations
         results = []
         all_redshift_ops = []
-        consecutive_failures = 0
+        rate_limited = False
 
         for result, ops in result_tuples:
             results.append(result)
             all_redshift_ops.extend(ops)
 
-            # Check for consecutive scraping failures (503 errors)
-            if result['status'] == 'failed' and result.get('reason') == 'scraping_failed':
-                consecutive_failures += 1
-                # Stop if we get 3 consecutive 503 errors (rate limited)
-                if consecutive_failures >= 3:
-                    print(f"[RATE LIMIT DETECTED] Stopping batch - {consecutive_failures} consecutive scraping failures detected")
-                    break
-            else:
-                consecutive_failures = 0  # Reset counter on success
+            # Check for 503 error (rate limiting) - stop immediately
+            if result['status'] == 'failed' and result.get('reason') == 'rate_limited_503':
+                rate_limited = True
+                print(f"[RATE LIMIT DETECTED] 503 error detected - stopping batch immediately")
+                break
 
         # Batch execute all Redshift operations using executemany() for better performance
         if all_redshift_ops:
@@ -262,43 +266,46 @@ async def process_urls(batch_size: int = 2, parallel_workers: int = 1, conservat
             try:
                 # Separate operations by type for batch execution
                 insert_content_data = []
-                update_werkvoorraad_urls = []
+                update_werkvoorraad_success_urls = []  # kopteksten = 1 (has content)
+                update_werkvoorraad_processed_urls = []  # kopteksten = 2 (processed but no content)
 
                 for op in all_redshift_ops:
                     if op[0] == 'insert_content':
                         _, url, content = op
                         insert_content_data.append((url, content))
-                    elif op[0] == 'update_werkvoorraad':
+                    elif op[0] == 'update_werkvoorraad_success':
                         _, url = op
-                        update_werkvoorraad_urls.append((url,))
+                        update_werkvoorraad_success_urls.append((url,))
+                    elif op[0] == 'update_werkvoorraad_processed':
+                        _, url = op
+                        update_werkvoorraad_processed_urls.append((url,))
 
                 # Use COPY for Redshift (5-10x faster) or executemany for PostgreSQL
                 use_redshift = os.getenv("USE_REDSHIFT_OUTPUT", "false").lower() == "true"
 
                 if insert_content_data:
-                    if use_redshift:
-                        # Use COPY command for Redshift (much faster for bulk inserts)
-                        buffer = StringIO()
-                        for url, content in insert_content_data:
-                            # Escape tabs and newlines in content
-                            content_escaped = content.replace('\t', ' ').replace('\n', ' ').replace('\r', ' ')
-                            buffer.write(f"{url}\t{content_escaped}\n")
-                        buffer.seek(0)
-                        output_cur.copy_from(buffer, 'pa.content_urls_joep', columns=['url', 'content'], sep='\t')
-                    else:
-                        # Use executemany for PostgreSQL
-                        output_cur.executemany("""
-                            INSERT INTO pa.content_urls_joep (url, content)
-                            VALUES (%s, %s)
-                        """, insert_content_data)
+                    # Always use executemany for inserts (works for both PostgreSQL and Redshift)
+                    # Note: For true Redshift optimization, use S3 + COPY, but executemany is sufficient for batches
+                    output_cur.executemany("""
+                        INSERT INTO pa.content_urls_joep (url, content)
+                        VALUES (%s, %s)
+                    """, insert_content_data)
 
-                # Batch UPDATE using executemany()
-                if update_werkvoorraad_urls:
+                # Batch UPDATE for successful URLs (kopteksten = 1)
+                if update_werkvoorraad_success_urls:
                     output_cur.executemany("""
                         UPDATE pa.jvs_seo_werkvoorraad_shopping_season
                         SET kopteksten = 1
                         WHERE url = %s
-                    """, update_werkvoorraad_urls)
+                    """, update_werkvoorraad_success_urls)
+
+                # Batch UPDATE for processed-without-content URLs (kopteksten = 2)
+                if update_werkvoorraad_processed_urls:
+                    output_cur.executemany("""
+                        UPDATE pa.jvs_seo_werkvoorraad_shopping_season
+                        SET kopteksten = 2
+                        WHERE url = %s
+                    """, update_werkvoorraad_processed_urls)
 
                 output_conn.commit()
             finally:
@@ -308,7 +315,6 @@ async def process_urls(batch_size: int = 2, parallel_workers: int = 1, conservat
         processed_count = sum(1 for r in results if r['status'] == 'success')
         skipped_count = sum(1 for r in results if r['status'] == 'skipped')
         failed_count = sum(1 for r in results if r['status'] == 'failed')
-        rate_limited = consecutive_failures >= 3
 
         if rate_limited:
             print(f"[BATCH STOPPED - RATE LIMITED] Processed: {processed_count}/{len(urls)} | Skipped: {skipped_count} | Failed: {failed_count}")
