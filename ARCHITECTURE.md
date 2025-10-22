@@ -1,7 +1,8 @@
 # ARCHITECTURE.md
 
 **Project:** Content Top - SEO Content Generation System
-**Last Updated:** 2025-10-17
+**Last Updated:** 2025-01-22 01:09 CET
+**Timezone:** Europe/Amsterdam (CET/CEST)
 
 ## Table of Contents
 1. [System Overview](#system-overview)
@@ -43,6 +44,16 @@
 3. **AI Generation**: OpenAI generates SEO-optimized content (100 words)
 4. **Storage**: Content saved to Redshift, tracking to local PostgreSQL
 5. **Quality Control**: Link validation checks for broken hyperlinks (301/404)
+
+### Recent Fixes (2025-01-22)
+1. **Three-State URL Tracking**: Implemented kopteksten=0/1/2 system for better analytics and preventing infinite retry loops
+2. **503 Detection**: Scraper returns {'error': '503'} for immediate batch stop (not after 3 consecutive failures)
+3. **Batch Size Fix**: Changed local tracking query to filter ALL processed URLs, preventing single-URL batches
+4. **Frontend NaN Values**: Added default value handling (|| operator) to prevent undefined/NaN display in batch progress
+5. **Database Sync Issue**: Fixed mismatch between local tracking (60,455 success) and Redshift (kopteksten=0). Synced 20,560 URLs.
+6. **Scraper HTML Structure**: Updated product URL extraction from JavaScript `plpUrl` pattern to HTML `<a class="productLink--zqrcp">` elements
+7. **False 503 Detection**: Changed from broad `'503' in response.text` to specific patterns to avoid false positives from URLs/IDs containing "503"
+8. **Database Insert Method**: Switched from Redshift `copy_from()` to universal `executemany()` to fix COPY command syntax errors
 
 ### Deployment Model
 - **Everything runs in Docker containers** via `docker-compose`
@@ -222,13 +233,15 @@ def process_single_url(url):
     redshift_ops.append(('insert_content', url, content))
     return (result, redshift_ops)
 
-# Execute all operations in single transaction
+# Execute all operations in single transaction using executemany()
 for result, ops in result_tuples:
     all_redshift_ops.extend(ops)
-execute_batch(all_redshift_ops)  # Single connection
+output_cur.executemany("INSERT INTO pa.content_urls_joep (url, content) VALUES (%s, %s)", insert_content_data)
 ```
 
 **Impact**: 15-20% throughput improvement
+
+**Update (2025-01-22)**: Switched from `copy_from()` to `executemany()` for better compatibility with both PostgreSQL and Redshift. Previous COPY command caused syntax errors with psycopg2.
 
 #### 3. Scraper Configuration
 **User Agent**: `"Beslist script voor SEO"`
@@ -238,6 +251,16 @@ execute_batch(all_redshift_ops)  # Single connection
 - Distinguishes scraper from browser traffic
 - Helps with debugging rate limiting issues
 - IT team can easily filter/analyze traffic
+
+**HTML Structure** (Updated 2025-01-22):
+- **Previous**: Extracted URLs from JavaScript `"plpUrl":"/p/.../40000/.../"` pattern
+- **Current**: Extracts from HTML `<a class="productLink--zqrcp" href="/p/.../36000/.../">` elements
+- **Reason**: Beslist.nl changed their page structure; JavaScript pattern no longer reliable
+
+**503 Error Detection** (Updated 2025-01-22):
+- **Previous**: `'503' in response.text` (too broad)
+- **Current**: Specific patterns - `'service unavailable'`, `'503 service'`, `'error 503'`
+- **Reason**: Avoided false positives from URLs/product IDs containing "503" (e.g., `/kantoorartikelen_558034_558644/`)
 
 **Rate Limiting**: Two modes available
 - **Optimized Mode** (default): 0.2-0.3s delay (~3-5 URLs/sec)
@@ -314,17 +337,27 @@ def get_output_connection():      # Smart router (uses Redshift if enabled)
 
 ### Schema Design Decisions
 
-#### 1. URL Deduplication
-**Pattern**: URL as primary key in work queue
+#### 1. Three-State URL Tracking
+**Pattern**: Tri-state flag for granular tracking instead of boolean
 ```sql
 CREATE TABLE pa.jvs_seo_werkvoorraad_shopping_season (
     url VARCHAR(500) PRIMARY KEY,  -- Natural key
-    kopteksten INTEGER DEFAULT 0,
+    kopteksten INTEGER DEFAULT 0,  -- 0=pending, 1=has content, 2=processed without content
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
-**Rationale**: Natural deduplication, no duplicate processing
+**Rationale**:
+- **kopteksten = 0**: Not yet processed (pending)
+- **kopteksten = 1**: Successfully processed with content in `content_urls_joep`
+- **kopteksten = 2**: Processed but no usable content (skipped, failed non-503 errors)
+- **503 errors**: Kept at kopteksten=0 for retry, batch stops immediately
+- **Benefits**: Better analytics, can query problematic URLs, prevents re-processing empty pages
+
+**Implementation** (2025-10-22):
+- Success: `update_werkvoorraad_success` operation sets kopteksten=1
+- Processed without content: `update_werkvoorraad_processed` sets kopteksten=2
+- Rate limiting (503): No Redshift update, stays kopteksten=0
 
 #### 2. Status Tracking with Separate Table
 **Pattern**: Separate tracking table instead of status column
@@ -391,13 +424,19 @@ FROM pa.content_urls_joep c
 WHERE w.url = c.url AND w.kopteksten = 0;
 ```
 
-**Results**: Synchronized 17,672 URLs, 0 overlaps remaining
+**Results**:
+- Initial sync: 17,672 URLs, 0 overlaps remaining
+- **2025-01-22 Fix**: Synced additional 20,560 URLs after discovering local tracking had 60,455 "success" entries but Redshift still showed `kopteksten=0`
+
+**Root Cause (2025-01-22)**:
+Local PostgreSQL tracking table marked URLs as "success", but Redshift `kopteksten` flag was never updated. This caused the API to filter out all fetched URLs, returning "No URLs to process" despite 55k pending URLs.
 
 **Use Cases**:
 - After bulk CSV imports
 - After manual content additions
 - After interrupted processing sessions
 - When content exists outside the work queue
+- **When local tracking and Redshift are out of sync**
 
 ---
 
@@ -570,10 +609,12 @@ route add -p 65.9.0.0 mask 255.255.0.0 192.168.1.1 metric 1 if 10
 6. **Monitoring**: Prometheus + Grafana for metrics
 7. **Logging**: ELK stack for centralized logs
 
-### Current Scale Targets:
+### Current Scale Targets (2025-01-22):
 - **Users**: 1-10 concurrent
-- **URLs**: 72,992 (shopping season batch)
+- **URLs**: 74,933 total (54,337 pending after sync)
+- **Processed**: 59,763 URLs with content generated
 - **Processing Speed**: 350-840 URLs/hour (3 workers)
+- **Success Rate**: ~90% (9/10 URLs in recent batches)
 - **Total Time**: 4-9 days for full dataset
 
 ---
