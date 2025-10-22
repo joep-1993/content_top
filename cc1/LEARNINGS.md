@@ -64,6 +64,32 @@ cur.executemany("INSERT INTO table (url) VALUES (%s)", new_urls)
 - **Location**: backend/main.py - `/api/upload-urls` endpoint (lines 463-542)
 - **Date**: 2025-10-21
 
+### Data Consistency Issue: Local Content Not Synced to Redshift
+- **Problem**: 69,391 URLs had content locally, but only 60,000 had kopteksten=1 in Redshift (9,567 URLs out of sync)
+- **Cause**: Batch processing completed locally but Redshift updates were lost or incomplete due to:
+  - Network interruptions during batch commits
+  - Interrupted processing sessions before Redshift sync
+  - Failed Redshift UPDATE operations (silent failures)
+- **Symptoms**:
+  - System shows 50k+ pending URLs but only processes 24 per batch
+  - Filtering logic excludes URLs that have local content but kopteksten=0 in Redshift
+  - Progress stalls despite thousands of "pending" URLs
+  - Status counts don't match actual content count
+- **Impact**: URLs with completed content stuck in pending state, wasting processing cycles
+- **Solution**: Created `backend/sync_redshift_flags.py` script to sync local content with Redshift
+  - Queries `pa.content_urls_joep` (local content table - source of truth)
+  - Updates Redshift `kopteksten=1` for all URLs with content
+  - Batch updates (1000 URLs per query) for performance
+  - Safe to run anytime (idempotent, only updates kopteksten=0 → kopteksten=1)
+- **Script Usage**:
+```bash
+docker-compose exec -T app python -m backend.sync_redshift_flags
+```
+- **Result**: Synced 9,567 URLs, pending count dropped from 50,345 to 40,754 (accurate)
+- **Prevention**: Run sync script after interrupted sessions or if progress stalls
+- **Location**: backend/sync_redshift_flags.py, backend/main.py (filtering logic updated)
+- **Date**: 2025-10-22
+
 ### Frontend Showing NaN/undefined in Batch Progress
 - **Problem**: Frontend displays "Batch 1 Complete: undefined successful, NaN failed/skipped" during batch processing
 - **Cause**: JavaScript directly using `data.processed` and `data.total_attempted` without null/undefined checks
@@ -1057,6 +1083,49 @@ elif not scraped_data:
     redshift_ops.append(('update_werkvoorraad_processed', url))
 ```
 - **Location**: backend/scraper_service.py (returns {'error': '503'}), backend/main.py (lines 73-87, 256-260)
+- **Date**: 2025-10-22
+
+### Database Synchronization Pattern for Hybrid Architecture
+- **Pattern**: Periodic sync script to ensure consistency between local and cloud databases
+- **Use Case**: Hybrid architecture (local PostgreSQL + Redshift) where local writes may not complete in cloud due to network issues or interruptions
+- **Problem**: Local content exists but cloud flags (kopteksten) not updated, causing mismatch between source of truth
+- **Implementation**:
+  1. Identify "source of truth" table (e.g., local content table with actual data)
+  2. Identify "tracking" table (e.g., cloud flags indicating processing state)
+  3. Create sync script that queries source table and updates tracking table
+  4. Use batch updates (1000 rows) for performance on large datasets
+  5. Make idempotent (safe to run multiple times, only updates stale records)
+- **Benefits**:
+  - Recovers from interrupted batch operations
+  - Maintains data consistency across hybrid architecture
+  - Can run safely anytime without duplicating work
+  - Prevents progress stalls due to filtering mismatches
+  - Provides one-time fix for accumulated inconsistencies
+- **Example**:
+```python
+# Sync script structure
+def sync_flags():
+    # 1. Get source of truth
+    local_cur.execute("SELECT url FROM pa.content_urls_joep")
+    urls_with_content = [row['url'] for row in local_cur.fetchall()]
+
+    # 2. Check cloud for stale records
+    output_cur.execute("""
+        SELECT COUNT(*) FROM pa.jvs_seo_werkvoorraad_shopping_season
+        WHERE url IN (%s) AND kopteksten = 0
+    """, urls_with_content)
+
+    # 3. Batch update cloud flags
+    for batch in chunks(urls_with_content, 1000):
+        output_cur.execute("""
+            UPDATE pa.jvs_seo_werkvoorraad_shopping_season
+            SET kopteksten = 1
+            WHERE url IN (%s) AND kopteksten = 0
+        """, batch)
+        output_conn.commit()
+```
+- **When to Run**: After interrupted sessions, network issues, or when progress stalls unexpectedly
+- **Location**: backend/sync_redshift_flags.py (created 2025-10-22)
 - **Date**: 2025-10-22
 
 ### Auto-Stop on Consecutive Scraping Failures

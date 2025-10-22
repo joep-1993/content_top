@@ -10,6 +10,8 @@ _Tasks currently being worked on_
 ## Completed
 _Finished tasks (move here when done)_
 
+- [x] Fix URL filtering logic to use content table instead of tracking table (changed from pa.jvs_seo_werkvoorraad_kopteksten_check to pa.content_urls_joep for accurate filtering) #claude-session:2025-10-22
+- [x] Fix data consistency issue between local content and Redshift flags (created sync_redshift_flags.py, synced 9,567 URLs with kopteksten=1) #claude-session:2025-10-22
 - [x] Implement 503 detection with immediate batch stop (changed from 3 consecutive failures to immediate stop on first 503) #claude-session:2025-10-22
 - [x] Fix batch size issue causing single-URL processing (changed local tracking query to filter ALL processed URLs, not just successful ones) #claude-session:2025-10-22
 - [x] Implement three-state URL tracking system: kopteksten=0 (pending), =1 (has content), =2 (processed without content) for better analytics #claude-session:2025-10-22

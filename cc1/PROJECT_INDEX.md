@@ -30,6 +30,7 @@ content_top/
 │   │                     # Optimized mode: No delay (~60K items/hour with 5 workers)
 │   ├── import_content.py # CSV import utility for bulk content upload (semicolon delimiter)
 │   ├── sync_werkvoorraad.py  # Utility: Synchronize werkvoorraad with content table
+│   ├── sync_redshift_flags.py # Utility: Sync Redshift kopteksten flags with local content table (fixes data consistency)
 │   ├── deduplicate_content.py # Utility: Remove duplicate URLs from content table
 │   ├── thema_ads_service.py  # Thema Ads job management with state persistence
 │   │                          # Features: delete job, campaign info fetching at runtime

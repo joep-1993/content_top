@@ -205,27 +205,26 @@ async def process_urls(batch_size: int = 2, parallel_workers: int = 1, conservat
         output_conn = get_output_connection()
         output_cur = output_conn.cursor()
 
-        # Get all processed URLs from local tracking (success, skipped, and failed)
-        # This prevents retrying URLs that have already been processed
+        # Get URLs that have content locally but need Redshift sync
         local_conn = get_db_connection()
         local_cur = local_conn.cursor()
         local_cur.execute("""
-            SELECT url FROM pa.jvs_seo_werkvoorraad_kopteksten_check
+            SELECT url FROM pa.content_urls_joep
         """)
-        successfully_processed_urls = set(row['url'] for row in local_cur.fetchall())
+        urls_with_content = set(row['url'] for row in local_cur.fetchall())
         local_cur.close()
         return_db_connection(local_conn)
 
-        # Fetch URLs from Redshift - get 2x batch_size to account for filtering
+        # Fetch unprocessed URLs from Redshift (kopteksten=0 means pending)
         output_cur.execute("""
             SELECT url FROM pa.jvs_seo_werkvoorraad_shopping_season
             WHERE kopteksten = 0
             LIMIT %s
-        """, (batch_size * 2,))
+        """, (batch_size * 3,))  # Get 3x batch_size to account for filtering
 
         all_rows = output_cur.fetchall()
-        # Filter out successfully processed URLs
-        rows = [row for row in all_rows if row['url'] not in successfully_processed_urls][:batch_size]
+        # Filter out URLs that already have content (don't reprocess)
+        rows = [row for row in all_rows if row['url'] not in urls_with_content][:batch_size]
         output_cur.close()
         return_output_connection(output_conn)  # Return to pool
 
