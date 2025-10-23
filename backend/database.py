@@ -23,9 +23,10 @@ def _get_redshift_pool():
     """Get or create Redshift connection pool"""
     global _redshift_pool
     if _redshift_pool is None:
+        print("[POOL] Initializing Redshift connection pool (minconn=1, maxconn=5)")
         _redshift_pool = pool.ThreadedConnectionPool(
-            minconn=2,
-            maxconn=10,
+            minconn=1,
+            maxconn=5,
             host=os.getenv("REDSHIFT_HOST"),
             port=os.getenv("REDSHIFT_PORT", "5439"),
             dbname=os.getenv("REDSHIFT_DB"),
@@ -34,40 +35,67 @@ def _get_redshift_pool():
             cursor_factory=RealDictCursor,
             connect_timeout=10
         )
+        print("[POOL] Redshift pool initialized")
     return _redshift_pool
 
 def get_db_connection():
     """Get PostgreSQL connection from pool"""
-    return _get_pg_pool().getconn()
+    pool = _get_pg_pool()
+    print(f"[POOL] Getting PG connection...")
+    conn = pool.getconn()
+    print(f"[POOL] Got PG connection")
+    return conn
 
 def return_db_connection(conn):
     """Return PostgreSQL connection to pool"""
     if conn:
-        _get_pg_pool().putconn(conn)
+        pool = _get_pg_pool()
+        pool.putconn(conn)
+        print(f"[POOL] Returned PG connection")
 
 def get_redshift_connection():
     """Get Redshift connection from pool"""
-    return _get_redshift_pool().getconn()
+    pool = _get_redshift_pool()
+    print(f"[POOL] Getting Redshift connection...")
+    conn = pool.getconn()
+    print(f"[POOL] Got Redshift connection")
+    return conn
 
 def return_redshift_connection(conn):
     """Return Redshift connection to pool"""
     if conn:
-        _get_redshift_pool().putconn(conn)
+        pool = _get_redshift_pool()
+        pool.putconn(conn)
+        print(f"[POOL] Returned Redshift connection")
 
 def get_output_connection():
     """Get connection for output operations - Redshift or PostgreSQL based on config"""
+    print(f"[POOL] get_output_connection() called")
     use_redshift = os.getenv("USE_REDSHIFT_OUTPUT", "false").lower() == "true"
+    print(f"[POOL] use_redshift={use_redshift}")
     if use_redshift:
-        return get_redshift_connection()
-    return get_db_connection()
+        print(f"[POOL] Calling get_redshift_connection()")
+        conn = get_redshift_connection()
+        print(f"[POOL] Got connection from get_redshift_connection()")
+        return conn
+    print(f"[POOL] Calling get_db_connection()")
+    conn = get_db_connection()
+    print(f"[POOL] Got connection from get_db_connection()")
+    return conn
 
 def return_output_connection(conn):
     """Return output connection to appropriate pool"""
+    print(f"[POOL] return_output_connection() called")
     use_redshift = os.getenv("USE_REDSHIFT_OUTPUT", "false").lower() == "true"
+    print(f"[POOL] use_redshift={use_redshift}")
     if use_redshift:
+        print(f"[POOL] Calling return_redshift_connection()")
         return_redshift_connection(conn)
+        print(f"[POOL] Returned via return_redshift_connection()")
     else:
+        print(f"[POOL] Calling return_db_connection()")
         return_db_connection(conn)
+        print(f"[POOL] Returned via return_db_connection()")
 
 def init_db():
     """Initialize database tables"""

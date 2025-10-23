@@ -37,6 +37,72 @@ docker-compose exec app python -m backend.import_content
   - Restart WSL terminal
 - **Documentation**: https://docs.docker.com/go/wsl2/
 
+### FastAPI Async Endpoints with psycopg2 ThreadedConnectionPool
+- **Problem**: API endpoint hangs indefinitely at `get_output_connection()` call. The async event loop was blocked by synchronous `getconn()` from ThreadedConnectionPool
+- **Symptoms**:
+  - First batch processes successfully
+  - Second batch hangs forever at database connection
+  - Logs show "[ENDPOINT] Getting output connection..." but never reach "[POOL] get_output_connection() called"
+  - No errors, no timeouts - just infinite hang
+- **Root Cause**: FastAPI async endpoint calling synchronous blocking psycopg2 pool operations
+  - `async def` endpoint uses asyncio event loop
+  - `pool.getconn()` is synchronous and blocks
+  - Blocking the event loop prevents any async operations from completing
+  - Even `await loop.run_in_executor()` doesn't fully solve it due to connection pool thread safety
+- **Solution**: Convert endpoint from `async def` to `def` (synchronous)
+```python
+# ❌ Wrong: Async endpoint with sync database pool
+@app.post("/api/process-urls")
+async def process_urls():
+    conn = get_output_connection()  # Blocks event loop!
+
+# ✅ Correct: Synchronous endpoint
+@app.post("/api/process-urls")
+def process_urls():
+    conn = get_output_connection()  # No event loop blocking
+```
+- **Alternative**: Use async-compatible driver (asyncpg) if async is required, but adds complexity
+- **Impact**: Immediate fix - endpoint processes multiple batches successfully
+- **Location**: backend/main.py (line 181), backend/database.py (connection pool functions)
+- **Date**: 2025-10-23
+
+### Redshift executemany() Blocking Indefinitely
+- **Problem**: Second API request hangs at "[POOL] Getting Redshift connection..." - connection pool exhaustion
+- **Symptoms**:
+  - First request succeeds and completes
+  - Second request waits forever for a Redshift connection
+  - Logs show "Got Redshift connection" but never "Returned Redshift connection"
+  - Connection pool exhausted (maxconn=5, all connections stuck)
+- **Root Cause**: Redshift doesn't handle `executemany()` well with INSERT/UPDATE statements
+  - Batch operations block indefinitely
+  - Connection never completes transaction
+  - Connection never returned to pool
+  - Subsequent requests wait forever for available connection
+- **Solution**: Replace all `executemany()` calls with individual `execute()` loops
+```python
+# ❌ Wrong: Blocks indefinitely on Redshift
+if insert_content_data:
+    output_cur.executemany("""
+        INSERT INTO pa.content_urls_joep (url, content)
+        VALUES (%s, %s)
+    """, insert_content_data)
+
+# ✅ Correct: Individual executes
+if insert_content_data:
+    print(f"[ENDPOINT] Inserting {len(insert_content_data)} content records...")
+    for url, content in insert_content_data:
+        output_cur.execute("""
+            INSERT INTO pa.content_urls_joep (url, content)
+            VALUES (%s, %s)
+        """, (url, content))
+    print(f"[ENDPOINT] Content inserts complete")
+```
+- **Performance**: Slightly slower than executemany() but actually completes (vs hanging forever)
+- **Note**: executemany() works fine on PostgreSQL, only Redshift has this issue
+- **Testing**: Verified 3 sequential requests complete successfully after fix
+- **Location**: backend/main.py (lines 286-315)
+- **Date**: 2025-10-23
+
 ### Redshift SQL Differences - ON CONFLICT Not Supported
 - **Problem**: URL upload fails with syntax error: "syntax error at or near 'ON'"
 - **Cause**: PostgreSQL's `ON CONFLICT DO NOTHING` syntax not supported by Redshift
@@ -417,6 +483,89 @@ if env_path.exists():
 # Use environment variables
 api_key = os.getenv("OPENAI_API_KEY")
 ```
+
+### Choosing Synchronous vs Async Endpoints in FastAPI
+- **Pattern**: Use synchronous endpoints when working with synchronous database drivers
+- **Use Case**: Endpoints that perform database operations with psycopg2 (synchronous driver)
+- **Rule of Thumb**:
+  - **Use `def` (sync)**: When using synchronous libraries (psycopg2, most database drivers)
+  - **Use `async def`**: When using async-compatible libraries (httpx, aiofiles, asyncpg)
+- **Why It Matters**: Async endpoints with sync operations block the event loop, causing hangs and deadlocks
+- **Implementation**:
+```python
+# ✅ Correct: Sync endpoint with sync database driver
+@app.post("/api/process-urls")
+def process_urls(batch_size: int = 10):
+    conn = get_db_connection()  # psycopg2 - synchronous
+    # ... database operations ...
+    return_db_connection(conn)
+    return {"status": "success"}
+
+# ✅ Also correct: Async endpoint with async operations
+@app.get("/api/external-data")
+async def fetch_external():
+    async with httpx.AsyncClient() as client:
+        response = await client.get("https://api.example.com")
+    return response.json()
+
+# ❌ Wrong: Async endpoint with sync database
+@app.post("/api/process-urls")
+async def process_urls():
+    conn = get_db_connection()  # Blocks event loop!
+```
+- **Migration Path**: If you need async with databases:
+  1. Switch to async driver (asyncpg for PostgreSQL)
+  2. Update all database calls to use `await`
+  3. Update connection pool to async pool
+- **Performance Note**: Sync endpoints are perfectly fine for most use cases and often simpler to reason about
+- **Location**: backend/main.py - all endpoints (converted to sync on 2025-10-23)
+- **Date**: 2025-10-23
+
+### Debugging Connection Pool Issues with Detailed Logging
+- **Pattern**: Add detailed logging at each connection lifecycle step to identify pool exhaustion or blocking
+- **Use Case**: Debugging why database connections hang, aren't returned, or pool is exhausted
+- **Implementation**:
+```python
+def get_db_connection():
+    """Get connection from pool"""
+    pool = _get_pg_pool()
+    print(f"[POOL] Getting PG connection...")
+    conn = pool.getconn()
+    print(f"[POOL] Got PG connection")
+    return conn
+
+def return_db_connection(conn):
+    """Return connection to pool"""
+    if conn:
+        pool = _get_pg_pool()
+        print(f"[POOL] Returning PG connection...")
+        pool.putconn(conn)
+        print(f"[POOL] Returned PG connection")
+```
+- **Benefits**:
+  - Quickly identify where connections get stuck (e.g., "Getting..." but never "Got...")
+  - See if connections are being returned (look for "Returned" logs)
+  - Track connection lifecycle across requests
+  - Diagnose pool exhaustion (multiple "Getting..." with no "Got...")
+- **Debugging Workflow**:
+  1. Add detailed logs to all connection get/return functions
+  2. Run failing request
+  3. Check logs for incomplete lifecycles
+  4. Identify where connection is stuck or not returned
+- **Example Debug Output**:
+```
+[POOL] Getting PG connection...
+[POOL] Got PG connection
+[ENDPOINT] Processing 2 URLs...
+[POOL] Getting Redshift connection...
+[POOL] Got Redshift connection
+[ENDPOINT] Inserting 2 content records...
+[ENDPOINT] Content inserts complete
+[POOL] Returned Redshift connection
+[POOL] Returned PG connection
+```
+- **Location**: backend/database.py (lines 44-98)
+- **Date**: 2025-10-23
 
 ### Custom Slash Commands for Permission Management
 - **Pattern**: Create markdown files in .claude/commands/ for frequently used operations
@@ -835,8 +984,11 @@ for op in all_redshift_ops:
         output_cur.execute("UPDATE pa.jvs_seo_werkvoorraad ...")
 output_conn.commit()
 ```
+- **Important Note (2025-10-23)**: Use individual `execute()` loops for Redshift, NOT `executemany()`
+  - Redshift `executemany()` blocks indefinitely and never releases connections
+  - PostgreSQL `executemany()` works fine
+  - See "Redshift executemany() Blocking Indefinitely" error section for details
 - **Location**: backend/main.py - `process_single_url()`, `process_urls()` endpoint
-- **Additional Optimization**: Use executemany() for batch INSERTs (implemented - see next pattern)
 
 ### Conservative Mode Pattern with ThreadPoolExecutor
 - **Problem**: Need to pass additional parameters to worker functions when using ThreadPoolExecutor.map()

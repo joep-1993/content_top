@@ -178,7 +178,7 @@ def process_single_url(url: str, conservative_mode: bool = False):
             return_db_connection(conn)  # Return connection to pool instead of closing
 
 @app.post("/api/process-urls")
-async def process_urls(batch_size: int = 2, parallel_workers: int = 1, conservative_mode: bool = False):
+def process_urls(batch_size: int = 2, parallel_workers: int = 1, conservative_mode: bool = False):
     """
     Process batch of URLs for SEO content generation.
     Fetches specified number of URLs, scrapes content, generates AI text, and saves to database.
@@ -189,6 +189,10 @@ async def process_urls(batch_size: int = 2, parallel_workers: int = 1, conservat
         parallel_workers: Number of parallel workers (1-10), ignored if conservative_mode is True
         conservative_mode: If True, use conservative scraping rate (max 2 URLs/sec) with 1 worker. Default: False
     """
+    print(f"[ENDPOINT] process_urls called - batch_size={batch_size}, workers={parallel_workers}, conservative={conservative_mode}")
+    output_conn = None
+    local_conn = None
+
     try:
         # Validate parameters
         if batch_size < 1:
@@ -201,32 +205,29 @@ async def process_urls(batch_size: int = 2, parallel_workers: int = 1, conservat
         if conservative_mode:
             parallel_workers = 1
 
+        print(f"[ENDPOINT] Getting output connection...")
         # Get unprocessed URLs from Redshift
         output_conn = get_output_connection()
+        print(f"[ENDPOINT] Got output connection, creating cursor...")
         output_cur = output_conn.cursor()
 
-        # Get URLs that have content locally but need Redshift sync
-        local_conn = get_db_connection()
-        local_cur = local_conn.cursor()
-        local_cur.execute("""
-            SELECT url FROM pa.content_urls_joep
-        """)
-        urls_with_content = set(row['url'] for row in local_cur.fetchall())
-        local_cur.close()
-        return_db_connection(local_conn)
-
         # Fetch unprocessed URLs from Redshift (kopteksten=0 means pending)
-        output_cur.execute("""
-            SELECT url FROM pa.jvs_seo_werkvoorraad_shopping_season
-            WHERE kopteksten = 0
-            LIMIT %s
-        """, (batch_size * 3,))  # Get 3x batch_size to account for filtering
+        try:
+            print(f"[ENDPOINT] Querying for {batch_size} pending URLs...")
+            output_cur.execute("""
+                SELECT url FROM pa.jvs_seo_werkvoorraad_shopping_season
+                WHERE kopteksten = 0
+                LIMIT %s
+            """, (batch_size,))
 
-        all_rows = output_cur.fetchall()
-        # Filter out URLs that already have content (don't reprocess)
-        rows = [row for row in all_rows if row['url'] not in urls_with_content][:batch_size]
-        output_cur.close()
-        return_output_connection(output_conn)  # Return to pool
+            rows = output_cur.fetchall()
+            print(f"[ENDPOINT] Got {len(rows)} URLs from Redshift")
+        finally:
+            print(f"[ENDPOINT] Closing cursor and returning connection...")
+            output_cur.close()
+            return_output_connection(output_conn)
+            output_conn = None
+            print(f"[ENDPOINT] Connection returned to pool")
 
         if not rows:
             return {
@@ -279,37 +280,52 @@ async def process_urls(batch_size: int = 2, parallel_workers: int = 1, conservat
                         _, url = op
                         update_werkvoorraad_processed_urls.append((url,))
 
-                # Use COPY for Redshift (5-10x faster) or executemany for PostgreSQL
-                use_redshift = os.getenv("USE_REDSHIFT_OUTPUT", "false").lower() == "true"
+                # Use individual executes instead of executemany for better Redshift compatibility
+                print(f"[ENDPOINT] Executing {len(insert_content_data)} inserts, {len(update_werkvoorraad_success_urls)} success updates, {len(update_werkvoorraad_processed_urls)} processed updates")
 
                 if insert_content_data:
-                    # Always use executemany for inserts (works for both PostgreSQL and Redshift)
-                    # Note: For true Redshift optimization, use S3 + COPY, but executemany is sufficient for batches
-                    output_cur.executemany("""
-                        INSERT INTO pa.content_urls_joep (url, content)
-                        VALUES (%s, %s)
-                    """, insert_content_data)
+                    print(f"[ENDPOINT] Inserting {len(insert_content_data)} content records...")
+                    for url, content in insert_content_data:
+                        output_cur.execute("""
+                            INSERT INTO pa.content_urls_joep (url, content)
+                            VALUES (%s, %s)
+                        """, (url, content))
+                    print(f"[ENDPOINT] Content inserts complete")
 
-                # Batch UPDATE for successful URLs (kopteksten = 1)
+                # Update for successful URLs (kopteksten = 1)
                 if update_werkvoorraad_success_urls:
-                    output_cur.executemany("""
-                        UPDATE pa.jvs_seo_werkvoorraad_shopping_season
-                        SET kopteksten = 1
-                        WHERE url = %s
-                    """, update_werkvoorraad_success_urls)
+                    print(f"[ENDPOINT] Updating {len(update_werkvoorraad_success_urls)} successful URLs...")
+                    for (url,) in update_werkvoorraad_success_urls:
+                        output_cur.execute("""
+                            UPDATE pa.jvs_seo_werkvoorraad_shopping_season
+                            SET kopteksten = 1
+                            WHERE url = %s
+                        """, (url,))
+                    print(f"[ENDPOINT] Success updates complete")
 
-                # Batch UPDATE for processed-without-content URLs (kopteksten = 2)
+                # Update for processed-without-content URLs (kopteksten = 2)
                 if update_werkvoorraad_processed_urls:
-                    output_cur.executemany("""
-                        UPDATE pa.jvs_seo_werkvoorraad_shopping_season
-                        SET kopteksten = 2
-                        WHERE url = %s
-                    """, update_werkvoorraad_processed_urls)
+                    print(f"[ENDPOINT] Updating {len(update_werkvoorraad_processed_urls)} processed URLs...")
+                    for (url,) in update_werkvoorraad_processed_urls:
+                        output_cur.execute("""
+                            UPDATE pa.jvs_seo_werkvoorraad_shopping_season
+                            SET kopteksten = 2
+                            WHERE url = %s
+                        """, (url,))
+                    print(f"[ENDPOINT] Processed updates complete")
 
+                print(f"[ENDPOINT] Committing transaction...")
                 output_conn.commit()
+                print(f"[ENDPOINT] Transaction committed successfully")
+            except Exception as db_error:
+                output_conn.rollback()
+                raise db_error
             finally:
+                print(f"[ENDPOINT] Cleaning up output connection...")
                 output_cur.close()
-                return_output_connection(output_conn)  # Return to pool
+                return_output_connection(output_conn)
+                output_conn = None
+                print(f"[ENDPOINT] Output connection cleanup complete")
 
         processed_count = sum(1 for r in results if r['status'] == 'success')
         skipped_count = sum(1 for r in results if r['status'] == 'skipped')
@@ -330,10 +346,17 @@ async def process_urls(batch_size: int = 2, parallel_workers: int = 1, conservat
         }
 
     except Exception as e:
+        print(f"[ERROR] process_urls failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        # Ensure connections are always returned to pool
+        if local_conn:
+            return_db_connection(local_conn)
+        if output_conn:
+            return_output_connection(output_conn)
 
 @app.get("/api/status")
-async def get_status():
+def get_status():
     """Get processing status and counts"""
     try:
         # Get counts from Redshift
@@ -641,7 +664,7 @@ def validate_single_content(content_data: tuple, conservative_mode: bool = False
     return validation_result
 
 @app.post("/api/validate-links")
-async def validate_links(batch_size: int = 10, parallel_workers: int = 3, conservative_mode: bool = False):
+def validate_links(batch_size: int = 10, parallel_workers: int = 3, conservative_mode: bool = False):
     """
     Validate hyperlinks in generated content.
     Checks if links return 301 or 404, and moves content back to pending if broken links found.

@@ -289,7 +289,7 @@ python-dotenv==1.0.0      # Environment variable management
 - `GET /static/*` - Frontend files
 
 ### SEO Workflow
-- `POST /api/process-urls?batch_size=10&parallel_workers=3&conservative_mode=false` - Process URLs with parallel workers (batch_size: min 1 no max, parallel_workers: 1-10, conservative_mode forces 1 worker with 0.5-0.7s delay)
+- `POST /api/process-urls?batch_size=10&parallel_workers=3&conservative_mode=false` - Process URLs with parallel workers (synchronous processing - optimized for database connection pooling, batch_size: min 1 no max, parallel_workers: 1-10, conservative_mode forces 1 worker with 0.5-0.7s delay)
 - `GET /api/status` - Get SEO processing status (includes total, processed, skipped, failed, pending counts)
 - `POST /api/upload-urls` - Upload text file with URLs (one per line, duplicates skipped)
 - `DELETE /api/result/{url}` - Delete result and reset URL to pending
