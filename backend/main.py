@@ -292,26 +292,28 @@ def process_urls(batch_size: int = 2, parallel_workers: int = 1, conservative_mo
                         """, (url, content))
                     print(f"[ENDPOINT] Content inserts complete")
 
-                # Update for successful URLs (kopteksten = 1)
+                # Update for successful URLs (kopteksten = 1) - BATCH UPDATE to prevent serialization conflicts
                 if update_werkvoorraad_success_urls:
                     print(f"[ENDPOINT] Updating {len(update_werkvoorraad_success_urls)} successful URLs...")
-                    for (url,) in update_werkvoorraad_success_urls:
-                        output_cur.execute("""
-                            UPDATE pa.jvs_seo_werkvoorraad_shopping_season
-                            SET kopteksten = 1
-                            WHERE url = %s
-                        """, (url,))
+                    url_list = [url for (url,) in update_werkvoorraad_success_urls]
+                    placeholders = ','.join(['%s'] * len(url_list))
+                    output_cur.execute(f"""
+                        UPDATE pa.jvs_seo_werkvoorraad_shopping_season
+                        SET kopteksten = 1
+                        WHERE url IN ({placeholders})
+                    """, url_list)
                     print(f"[ENDPOINT] Success updates complete")
 
-                # Update for processed-without-content URLs (kopteksten = 2)
+                # Update for processed-without-content URLs (kopteksten = 2) - BATCH UPDATE to prevent serialization conflicts
                 if update_werkvoorraad_processed_urls:
                     print(f"[ENDPOINT] Updating {len(update_werkvoorraad_processed_urls)} processed URLs...")
-                    for (url,) in update_werkvoorraad_processed_urls:
-                        output_cur.execute("""
-                            UPDATE pa.jvs_seo_werkvoorraad_shopping_season
-                            SET kopteksten = 2
-                            WHERE url = %s
-                        """, (url,))
+                    url_list = [url for (url,) in update_werkvoorraad_processed_urls]
+                    placeholders = ','.join(['%s'] * len(url_list))
+                    output_cur.execute(f"""
+                        UPDATE pa.jvs_seo_werkvoorraad_shopping_season
+                        SET kopteksten = 2
+                        WHERE url IN ({placeholders})
+                    """, url_list)
                     print(f"[ENDPOINT] Processed updates complete")
 
                 print(f"[ENDPOINT] Committing transaction...")
@@ -733,6 +735,7 @@ def validate_links(batch_size: int = 10, parallel_workers: int = 3, conservative
 
         results = []
         moved_to_pending = 0
+        urls_with_broken_links = []
 
         # Process validation results and update database
         for validation_result in validation_results:
@@ -751,27 +754,9 @@ def validate_links(batch_size: int = 10, parallel_workers: int = 3, conservative
                 json.dumps(validation_result['broken_links'])
             ))
 
-            # If broken links found, move back to pending
+            # Collect URLs with broken links for batch operations
             if validation_result['has_broken_links']:
-                # Delete from output table (Redshift or PostgreSQL)
-                output_cur.execute("""
-                    DELETE FROM pa.content_urls_joep
-                    WHERE url = %s
-                """, (content_url,))
-
-                # Delete from tracking table
-                cur.execute("""
-                    DELETE FROM pa.jvs_seo_werkvoorraad_kopteksten_check
-                    WHERE url = %s
-                """, (content_url,))
-
-                # Reset kopteksten flag
-                cur.execute("""
-                    UPDATE pa.jvs_seo_werkvoorraad_shopping_season
-                    SET kopteksten = 0
-                    WHERE url = %s
-                """, (content_url,))
-
+                urls_with_broken_links.append(content_url)
                 moved_to_pending += 1
 
             results.append({
@@ -781,6 +766,29 @@ def validate_links(batch_size: int = 10, parallel_workers: int = 3, conservative
                 'broken_links': validation_result['broken_links'],
                 'moved_to_pending': validation_result['has_broken_links']
             })
+
+        # BATCH DELETE/UPDATE operations to prevent serialization conflicts
+        if urls_with_broken_links:
+            placeholders = ','.join(['%s'] * len(urls_with_broken_links))
+
+            # Delete from output table (Redshift or PostgreSQL)
+            output_cur.execute(f"""
+                DELETE FROM pa.content_urls_joep
+                WHERE url IN ({placeholders})
+            """, urls_with_broken_links)
+
+            # Delete from tracking table
+            cur.execute(f"""
+                DELETE FROM pa.jvs_seo_werkvoorraad_kopteksten_check
+                WHERE url IN ({placeholders})
+            """, urls_with_broken_links)
+
+            # Reset kopteksten flags
+            cur.execute(f"""
+                UPDATE pa.jvs_seo_werkvoorraad_shopping_season
+                SET kopteksten = 0
+                WHERE url IN ({placeholders})
+            """, urls_with_broken_links)
 
         conn.commit()
         output_conn.commit()
